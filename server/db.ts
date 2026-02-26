@@ -1,9 +1,10 @@
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { 
-  InsertUser, 
-  users, 
-  clients, 
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import {
+  InsertUser,
+  users,
+  clients,
   InsertClient,
   barbers,
   InsertBarber,
@@ -24,17 +25,20 @@ import {
   settings,
   InsertSetting,
   barberSchedules,
-  InsertBarberSchedule
+  InsertBarberSchedule,
+  barbershops,
+  InsertBarbershop,
 } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _client = postgres(process.env.DATABASE_URL, { ssl: "require" });
+      _db = drizzle(_client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -43,384 +47,445 @@ export async function getDb() {
   return _db;
 }
 
+// ─── Auth / Users ─────────────────────────────────────────────────────────────
+
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
+  if (!db) return;
 
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
+  const values: InsertUser = { ...user };
+  if (!values.lastSignedIn) values.lastSignedIn = new Date();
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
+  await db
+    .insert(users)
+    .values(values)
+    .onConflictDoUpdate({
+      target: users.openId,
+      set: { ...values, updatedAt: new Date() },
     });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
 }
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
-}
-
-// ============= CLIENT OPERATIONS =============
-
-export async function createClient(client: InsertClient) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.insert(clients).values(client);
-  return result;
-}
-
-export async function getClients() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(clients).orderBy(desc(clients.createdAt));
-}
-
-export async function getClientById(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
   return result[0];
 }
 
-export async function updateClient(id: number, data: Partial<InsertClient>) {
+export async function getUserByEmail(email: string) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.update(clients).set(data).where(eq(clients.id, id));
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
 }
 
-export async function deleteClient(id: number) {
+export async function getUserById(id: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.delete(clients).where(eq(clients.id, id));
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
 }
 
-export async function getInactiveClients(daysSinceLastVisit: number) {
+// ─── Barbershops ──────────────────────────────────────────────────────────────
+
+export async function createBarbershop(data: InsertBarbershop) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+  const result = await db.insert(barbershops).values(data).returning();
+  return result[0];
+}
+
+export async function getBarbershopById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(barbershops).where(eq(barbershops.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getBarbershopBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(barbershops).where(eq(barbershops.slug, slug)).limit(1);
+  return result[0];
+}
+
+export async function updateBarbershop(id: number, data: Partial<InsertBarbershop>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(barbershops)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(barbershops.id, id))
+    .returning();
+  return result[0];
+}
+
+// ─── Clients ──────────────────────────────────────────────────────────────────
+
+export async function getClients(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clients).where(eq(clients.barbershopId, barbershopId)).orderBy(desc(clients.createdAt));
+}
+
+export async function getClientById(id: number, barbershopId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(clients).where(
+    and(eq(clients.id, id), eq(clients.barbershopId, barbershopId))
+  ).limit(1);
+  return result[0];
+}
+
+export async function createClient(data: InsertClient) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(clients).values(data).returning();
+  return result[0];
+}
+
+export async function updateClient(id: number, barbershopId: number, data: Partial<InsertClient>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(clients)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(clients.id, id), eq(clients.barbershopId, barbershopId)))
+    .returning();
+  return result[0];
+}
+
+export async function deleteClient(id: number, barbershopId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(clients).where(and(eq(clients.id, id), eq(clients.barbershopId, barbershopId)));
+}
+
+export async function getInactiveClients(barbershopId: number, daysSinceLastVisit: number) {
+  const db = await getDb();
+  if (!db) return [];
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysSinceLastVisit);
-  
-  return await db
-    .select()
-    .from(clients)
-    .where(
-      and(
-        eq(clients.isActive, true),
-        lte(clients.lastVisit, cutoffDate)
-      )
-    );
+  return db.select().from(clients).where(
+    and(
+      eq(clients.barbershopId, barbershopId),
+      eq(clients.isActive, true),
+      lte(clients.lastVisit, cutoffDate)
+    )
+  );
 }
 
-// ============= BARBER OPERATIONS =============
+// ─── Barbers ──────────────────────────────────────────────────────────────────
 
-export async function createBarber(barber: InsertBarber) {
+export async function getBarbers(barbershopId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(barbers).values(barber);
+  if (!db) return [];
+  return db.select().from(barbers).where(eq(barbers.barbershopId, barbershopId)).orderBy(barbers.name);
 }
 
-export async function getBarbers() {
+export async function getBarberById(id: number, barbershopId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(barbers).where(eq(barbers.isActive, true));
-}
-
-export async function getBarberById(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(barbers).where(eq(barbers.id, id)).limit(1);
+  if (!db) return undefined;
+  const result = await db.select().from(barbers).where(
+    and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId))
+  ).limit(1);
   return result[0];
 }
 
-export async function updateBarber(id: number, data: Partial<InsertBarber>) {
+export async function createBarber(data: InsertBarber) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  return await db.update(barbers).set(data).where(eq(barbers.id, id));
-}
-
-export async function deleteBarber(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.update(barbers).set({ isActive: false }).where(eq(barbers.id, id));
-}
-
-// ============= SERVICE OPERATIONS =============
-
-export async function createService(service: InsertService) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(services).values(service);
-}
-
-export async function getServices() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(services).where(eq(services.isActive, true));
-}
-
-export async function getServiceById(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(services).where(eq(services.id, id)).limit(1);
+  const result = await db.insert(barbers).values(data).returning();
   return result[0];
 }
 
-export async function updateService(id: number, data: Partial<InsertService>) {
+export async function updateBarber(id: number, barbershopId: number, data: Partial<InsertBarber>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  return await db.update(services).set(data).where(eq(services.id, id));
+  const result = await db
+    .update(barbers)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)))
+    .returning();
+  return result[0];
 }
 
-export async function deleteService(id: number) {
+export async function deleteBarber(id: number, barbershopId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  return await db.update(services).set({ isActive: false }).where(eq(services.id, id));
+  await db.delete(barbers).where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)));
 }
 
-// ============= APPOINTMENT OPERATIONS =============
+// ─── Barber Schedules ─────────────────────────────────────────────────────────
 
-export async function createAppointment(appointment: InsertAppointment) {
+export async function getBarberSchedules(barberId: number, barbershopId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(appointments).values(appointment);
+  if (!db) return [];
+  return db.select().from(barberSchedules).where(
+    and(eq(barberSchedules.barberId, barberId), eq(barberSchedules.barbershopId, barbershopId))
+  );
 }
 
-export async function getAppointments(startDate?: Date, endDate?: Date) {
+export async function upsertBarberSchedule(data: InsertBarberSchedule) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  let query = db.select().from(appointments);
-  
-  if (startDate && endDate) {
-    query = query.where(
-      and(
-        gte(appointments.appointmentDate, startDate),
-        lte(appointments.appointmentDate, endDate)
-      )
-    ) as any;
+  const result = await db.insert(barberSchedules).values(data).returning();
+  return result[0];
+}
+
+// ─── Services ─────────────────────────────────────────────────────────────────
+
+export async function getServices(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(services).where(eq(services.barbershopId, barbershopId)).orderBy(services.name);
+}
+
+export async function getServiceById(id: number, barbershopId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(services).where(
+    and(eq(services.id, id), eq(services.barbershopId, barbershopId))
+  ).limit(1);
+  return result[0];
+}
+
+export async function createService(data: InsertService) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(services).values(data).returning();
+  return result[0];
+}
+
+export async function updateService(id: number, barbershopId: number, data: Partial<InsertService>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(services)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(services.id, id), eq(services.barbershopId, barbershopId)))
+    .returning();
+  return result[0];
+}
+
+export async function deleteService(id: number, barbershopId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(services).where(and(eq(services.id, id), eq(services.barbershopId, barbershopId)));
+}
+
+// ─── Appointments ─────────────────────────────────────────────────────────────
+
+export async function getAppointments(barbershopId: number, filters?: { startDate?: Date; endDate?: Date }) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [eq(appointments.barbershopId, barbershopId)];
+  if (filters?.startDate) conditions.push(gte(appointments.appointmentDate, filters.startDate));
+  if (filters?.endDate) conditions.push(lte(appointments.appointmentDate, filters.endDate));
+
+  return db.select().from(appointments).where(and(...conditions)).orderBy(desc(appointments.appointmentDate));
+}
+
+export async function createAppointment(data: InsertAppointment) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(appointments).values(data).returning();
+  return result[0];
+}
+
+export async function updateAppointment(id: number, barbershopId: number, data: Partial<InsertAppointment>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(appointments)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(appointments.id, id), eq(appointments.barbershopId, barbershopId)))
+    .returning();
+  return result[0];
+}
+
+export async function checkAppointmentConflict(barberId: number, barbershopId: number, appointmentDate: Date, excludeId?: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const conditions = [
+    eq(appointments.barberId, barberId),
+    eq(appointments.barbershopId, barbershopId),
+    eq(appointments.appointmentDate, appointmentDate),
+  ];
+  if (excludeId) {
+    conditions.push(sql`${appointments.id} != ${excludeId}`);
   }
-  
-  return await query.orderBy(desc(appointments.appointmentDate));
+
+  const result = await db.select().from(appointments).where(and(...conditions)).limit(1);
+  return result.length > 0;
 }
 
-export async function getAppointmentById(id: number) {
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+export async function getPayments(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payments).where(eq(payments.barbershopId, barbershopId)).orderBy(desc(payments.createdAt));
+}
+
+export async function createPayment(data: InsertPayment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(appointments).where(eq(appointments.id, id)).limit(1);
+  const result = await db.insert(payments).values(data).returning();
   return result[0];
 }
 
-export async function updateAppointment(id: number, data: Partial<InsertAppointment>) {
+export async function updatePaymentByStripeSession(stripeSessionId: string, data: Partial<InsertPayment>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  return await db.update(appointments).set(data).where(eq(appointments.id, id));
+  const result = await db
+    .update(payments)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(payments.stripeSessionId, stripeSessionId))
+    .returning();
+  return result[0];
 }
 
-export async function getAppointmentsByBarber(barberId: number, date: Date) {
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export async function getCampaigns(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(campaigns).where(eq(campaigns.barbershopId, barbershopId)).orderBy(desc(campaigns.createdAt));
+}
+
+export async function createCampaign(data: InsertCampaign) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  return await db
-    .select()
+  const result = await db.insert(campaigns).values(data).returning();
+  return result[0];
+}
+
+export async function updateCampaign(id: number, barbershopId: number, data: Partial<InsertCampaign>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(campaigns)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(campaigns.id, id), eq(campaigns.barbershopId, barbershopId)))
+    .returning();
+  return result[0];
+}
+
+// ─── WhatsApp Messages ────────────────────────────────────────────────────────
+
+export async function getWhatsappMessages(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(whatsappMessages).where(eq(whatsappMessages.barbershopId, barbershopId)).orderBy(desc(whatsappMessages.createdAt));
+}
+
+export async function createWhatsappMessage(data: InsertWhatsappMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(whatsappMessages).values(data).returning();
+  return result[0];
+}
+
+export async function updateWhatsappMessageStatus(id: number, status: "pending" | "sent" | "failed", evolutionMessageId?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(whatsappMessages)
+    .set({
+      status,
+      evolutionMessageId: evolutionMessageId ?? undefined,
+      sentAt: status === "sent" ? new Date() : undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(whatsappMessages.id, id))
+    .returning();
+  return result[0];
+}
+
+// ─── Message Templates ────────────────────────────────────────────────────────
+
+export async function getMessageTemplates(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(messageTemplates).where(eq(messageTemplates.barbershopId, barbershopId));
+}
+
+export async function createMessageTemplate(data: InsertMessageTemplate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(messageTemplates).values(data).returning();
+  return result[0];
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export async function getSetting(barbershopId: number, key: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(settings).where(
+    and(eq(settings.barbershopId, barbershopId), eq(settings.key, key))
+  ).limit(1);
+  return result[0];
+}
+
+export async function upsertSetting(data: InsertSetting) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .insert(settings)
+    .values(data)
+    .onConflictDoUpdate({
+      target: [settings.barbershopId, settings.key],
+      set: { value: data.value, description: data.description, updatedAt: new Date() },
+    })
+    .returning();
+  return result[0];
+}
+
+// ─── Analytics / Dashboard ────────────────────────────────────────────────────
+
+export async function getDashboardStats(barbershopId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const [totalClients] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(clients)
+    .where(and(eq(clients.barbershopId, barbershopId), eq(clients.isActive, true)));
+
+  const [monthlyAppointments] = await db
+    .select({ count: sql<number>`count(*)` })
     .from(appointments)
     .where(
       and(
-        eq(appointments.barberId, barberId),
-        gte(appointments.appointmentDate, startOfDay),
-        lte(appointments.appointmentDate, endOfDay)
+        eq(appointments.barbershopId, barbershopId),
+        gte(appointments.appointmentDate, startOfMonth),
+        lte(appointments.appointmentDate, endOfMonth)
       )
     );
-}
 
-// ============= PAYMENT OPERATIONS =============
+  const [monthlyRevenue] = await db
+    .select({ total: sql<number>`coalesce(sum(amount_in_cents), 0)` })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.barbershopId, barbershopId),
+        eq(payments.status, "completed"),
+        gte(payments.createdAt, startOfMonth),
+        lte(payments.createdAt, endOfMonth)
+      )
+    );
 
-export async function createPayment(payment: InsertPayment) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(payments).values(payment);
-}
-
-export async function getPayments() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(payments).orderBy(desc(payments.createdAt));
-}
-
-export async function getPaymentsByClient(clientId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(payments).where(eq(payments.clientId, clientId));
-}
-
-// ============= CAMPAIGN OPERATIONS =============
-
-export async function createCampaign(campaign: InsertCampaign) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(campaigns).values(campaign);
-}
-
-export async function getCampaigns() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(campaigns).orderBy(desc(campaigns.createdAt));
-}
-
-export async function updateCampaign(id: number, data: Partial<InsertCampaign>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.update(campaigns).set(data).where(eq(campaigns.id, id));
-}
-
-// ============= COUPON OPERATIONS =============
-
-export async function createCoupon(coupon: InsertCoupon) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(coupons).values(coupon);
-}
-
-export async function getCouponByCode(code: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(coupons).where(eq(coupons.code, code)).limit(1);
-  return result[0];
-}
-
-// ============= WHATSAPP MESSAGE OPERATIONS =============
-
-export async function createWhatsappMessage(message: InsertWhatsappMessage) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(whatsappMessages).values(message);
-}
-
-export async function getWhatsappMessages() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(whatsappMessages).orderBy(desc(whatsappMessages.createdAt));
-}
-
-// ============= MESSAGE TEMPLATE OPERATIONS =============
-
-export async function createMessageTemplate(template: InsertMessageTemplate) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(messageTemplates).values(template);
-}
-
-export async function getMessageTemplates() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.select().from(messageTemplates).where(eq(messageTemplates.isActive, true));
-}
-
-// ============= SETTINGS OPERATIONS =============
-
-export async function getSetting(key: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const result = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
-  return result[0];
-}
-
-export async function upsertSetting(setting: InsertSetting) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db.insert(settings).values(setting).onDuplicateKeyUpdate({
-    set: { value: setting.value },
-  });
+  return {
+    totalClients: Number(totalClients?.count ?? 0),
+    monthlyAppointments: Number(monthlyAppointments?.count ?? 0),
+    monthlyRevenue: Number(monthlyRevenue?.total ?? 0),
+  };
 }

@@ -4,6 +4,8 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+
+// Dashboard (dono/barbeiro)
 import Home from "./pages/Home";
 import Clients from "./pages/Clients";
 import Barbers from "./pages/Barbers";
@@ -12,38 +14,48 @@ import Appointments from "./pages/Appointments";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
 import Marketing from "./pages/Marketing";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+
+// Portal do cliente
+import BarbershopPage from "./pages/portal/BarbershopPage";
+import BookingPage from "./pages/portal/BookingPage";
+import ClientAccountPage from "./pages/portal/ClientAccountPage";
+import { ClientLoginPage, ClientRegisterPage } from "./pages/portal/ClientAuthPages";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/clients"} component={Clients} />
-      <Route path={"/barbers"} component={Barbers} />
-      <Route path={"/services"} component={Services} />
-      <Route path={"/appointments"} component={Appointments} />
-      <Route path={"/payments"} component={Payments} />
-      <Route path={"/reports"} component={Reports} />
-      <Route path={"/marketing"} component={Marketing} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
+      {/* ─── Dashboard (dono) ─────────────────────────────────── */}
+      <Route path="/" component={Home} />
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
+      <Route path="/clients" component={Clients} />
+      <Route path="/barbers" component={Barbers} />
+      <Route path="/services" component={Services} />
+      <Route path="/appointments" component={Appointments} />
+      <Route path="/payments" component={Payments} />
+      <Route path="/reports" component={Reports} />
+      <Route path="/marketing" component={Marketing} />
+
+      {/* ─── Portal público da barbearia ──────────────────────── */}
+      <Route path="/b/:slug" component={BarbershopPage} />
+      <Route path="/b/:slug/agendar" component={BookingPage} />
+      <Route path="/b/:slug/minha-conta" component={ClientAccountPage} />
+      <Route path="/b/:slug/login" component={ClientLoginPage} />
+      <Route path="/b/:slug/cadastro" component={ClientRegisterPage} />
+
+      {/* ─── 404 ──────────────────────────────────────────────── */}
+      <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />

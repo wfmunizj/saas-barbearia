@@ -4,33 +4,102 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
+import { sendWhatsappMessage, sendBulkWhatsappMessages, interpolateTemplate } from "./whatsapp";
+import { TRPCError } from "@trpc/server";
+import { clientPortalRouter } from "./clientRouter";
+import { plans, clientUsers, subscriptions } from "../drizzle/schema";
+import { eq, and } from "drizzle-orm";
+import Stripe from "stripe";
+
+// Helper para extrair barbershopId do contexto do usuário autenticado
+async function getBarbershopId(userId: number): Promise<number> {
+  const user = await db.getUserById(userId);
+  if (!user?.barbershopId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Usuário não associado a uma barbearia" });
+  }
+  return user.barbershopId;
+}
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      const user = opts.ctx.user;
+      if (!user) return null;
+      let barbershop = null;
+      if (user.barbershopId) {
+        barbershop = await db.getBarbershopById(user.barbershopId);
+      }
+      return { ...user, barbershop };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
 
-  // Clients router
-  clients: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getClients();
+  // ─── Barbershop ─────────────────────────────────────────────────────────────
+
+  barbershop: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getBarbershopById(barbershopId);
     }),
-    
+
+    update: protectedProcedure
+      .input(z.object({
+        name: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        address: z.string().optional(),
+        logoUrl: z.string().optional(),
+        whatsappApiUrl: z.string().optional(),
+        whatsappApiKey: z.string().optional(),
+        whatsappInstanceName: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.updateBarbershop(barbershopId, input);
+      }),
+
+    getWhatsappStatus: protectedProcedure.query(async ({ ctx }) => {
+      const { EvolutionApiClient } = await import("./whatsapp");
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      const barbershop = await db.getBarbershopById(barbershopId);
+      if (!barbershop?.whatsappApiUrl || !barbershop?.whatsappApiKey || !barbershop?.whatsappInstanceName) {
+        return { configured: false, status: null };
+      }
+      try {
+        const client = new EvolutionApiClient(
+          barbershop.whatsappApiUrl,
+          barbershop.whatsappApiKey,
+          barbershop.whatsappInstanceName
+        );
+        const status = await client.getInstanceStatus();
+        return { configured: true, status };
+      } catch {
+        return { configured: true, status: "error" };
+      }
+    }),
+  }),
+
+  // ─── Clients ────────────────────────────────────────────────────────────────
+
+  clients: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getClients(barbershopId);
+    }),
+
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getClientById(input.id);
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.getClientById(input.id, barbershopId);
       }),
-    
+
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
@@ -38,10 +107,11 @@ export const appRouter = router({
         email: z.string().optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createClient(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.createClient({ ...input, barbershopId });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -51,36 +121,35 @@ export const appRouter = router({
         notes: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
         const { id, ...data } = input;
-        return await db.updateClient(id, data);
+        return db.updateClient(id, barbershopId, data);
       }),
-    
+
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return await db.deleteClient(input.id);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.deleteClient(input.id, barbershopId);
       }),
-    
+
     getInactive: protectedProcedure
-      .input(z.object({ days: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getInactiveClients(input.days);
+      .input(z.object({ daysSinceLastVisit: z.number().default(30) }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.getInactiveClients(barbershopId, input.daysSinceLastVisit);
       }),
   }),
 
-  // Barbers router
+  // ─── Barbers ────────────────────────────────────────────────────────────────
+
   barbers: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getBarbers();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getBarbers(barbershopId);
     }),
-    
-    getById: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getBarberById(input.id);
-      }),
-    
+
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
@@ -88,10 +157,11 @@ export const appRouter = router({
         email: z.string().optional(),
         specialties: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createBarber(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.createBarber({ ...input, barbershopId });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -101,30 +171,28 @@ export const appRouter = router({
         specialties: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
         const { id, ...data } = input;
-        return await db.updateBarber(id, data);
+        return db.updateBarber(id, barbershopId, data);
       }),
-    
+
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return await db.deleteBarber(input.id);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.deleteBarber(input.id, barbershopId);
       }),
   }),
 
-  // Services router
+  // ─── Services ────────────────────────────────────────────────────────────────
+
   services: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getServices();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getServices(barbershopId);
     }),
-    
-    getById: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getServiceById(input.id);
-      }),
-    
+
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
@@ -132,10 +200,11 @@ export const appRouter = router({
         durationMinutes: z.number(),
         priceInCents: z.number(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createService(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.createService({ ...input, barbershopId });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -145,112 +214,106 @@ export const appRouter = router({
         priceInCents: z.number().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
         const { id, ...data } = input;
-        return await db.updateService(id, data);
+        return db.updateService(id, barbershopId, data);
       }),
-    
+
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return await db.deleteService(input.id);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.deleteService(input.id, barbershopId);
       }),
   }),
 
-  // Appointments router
+  // ─── Appointments ─────────────────────────────────────────────────────────────
+
   appointments: router({
     list: protectedProcedure
       .input(z.object({
-        startDate: z.date().optional(),
-        endDate: z.date().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
       }).optional())
-      .query(async ({ input }) => {
-        return await db.getAppointments(input?.startDate, input?.endDate);
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.getAppointments(barbershopId, {
+          startDate: input?.startDate ? new Date(input.startDate) : undefined,
+          endDate: input?.endDate ? new Date(input.endDate) : undefined,
+        });
       }),
-    
-    getById: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getAppointmentById(input.id);
-      }),
-    
+
     create: protectedProcedure
       .input(z.object({
         clientId: z.number(),
         barberId: z.number(),
         serviceId: z.number(),
-        appointmentDate: z.date(),
+        appointmentDate: z.union([z.string(), z.date()]).transform(v => new Date(v)),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createAppointment(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const appointmentDate = input.appointmentDate;
+
+        const hasConflict = await db.checkAppointmentConflict(input.barberId, barbershopId, appointmentDate);
+        if (hasConflict) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este barbeiro já tem um agendamento neste horário" });
+        }
+
+        return db.createAppointment({ ...input, barbershopId, appointmentDate });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
         status: z.enum(["pending", "confirmed", "completed", "cancelled"]).optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
         const { id, ...data } = input;
-        return await db.updateAppointment(id, data);
-      }),
-    
-    getByBarber: protectedProcedure
-      .input(z.object({
-        barberId: z.number(),
-        date: z.date(),
-      }))
-      .query(async ({ input }) => {
-        return await db.getAppointmentsByBarber(input.barberId, input.date);
+        return db.updateAppointment(id, barbershopId, data);
       }),
   }),
 
-  // Payments router
+  // ─── Payments ────────────────────────────────────────────────────────────────
+
   payments: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getPayments();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getPayments(barbershopId);
     }),
-    
-    getByClient: protectedProcedure
-      .input(z.object({ clientId: z.number() }))
-      .query(async ({ input }) => {
-        return await db.getPaymentsByClient(input.clientId);
-      }),
-    
-    create: protectedProcedure
-      .input(z.object({
-        clientId: z.number(),
-        appointmentId: z.number().optional(),
-        amountInCents: z.number(),
-        paymentMethod: z.string().optional(),
-      }))
-      .mutation(async ({ input }) => {
-        return await db.createPayment(input);
-      }),
   }),
 
-  // Campaigns router
-  campaigns: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getCampaigns();
+  // ─── Analytics ───────────────────────────────────────────────────────────────
+
+  analytics: router({
+    dashboard: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getDashboardStats(barbershopId);
     }),
-    
+  }),
+
+  // ─── Campaigns ────────────────────────────────────────────────────────────────
+
+  campaigns: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getCampaigns(barbershopId);
+    }),
+
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
         description: z.string().optional(),
-        type: z.enum(["promotional", "reactivation", "referral"]),
-        discountPercentage: z.number().optional(),
-        discountAmountInCents: z.number().optional(),
-        startDate: z.date(),
-        endDate: z.date().optional(),
+        type: z.enum(["discount", "reactivation", "referral", "custom"]),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createCampaign(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.createCampaign({ ...input, barbershopId });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -258,64 +321,168 @@ export const appRouter = router({
         description: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
         const { id, ...data } = input;
-        return await db.updateCampaign(id, data);
+        return db.updateCampaign(id, barbershopId, data);
       }),
   }),
 
-  // WhatsApp messages router
+  // ─── WhatsApp ─────────────────────────────────────────────────────────────────
+
   whatsapp: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getWhatsappMessages();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getWhatsappMessages(barbershopId);
     }),
-    
+
     send: protectedProcedure
       .input(z.object({
         clientId: z.number(),
         message: z.string(),
         campaignId: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createWhatsappMessage(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return sendWhatsappMessage(barbershopId, input.clientId, input.message, input.campaignId);
+      }),
+
+    sendBulk: protectedProcedure
+      .input(z.object({
+        clientIds: z.array(z.number()),
+        message: z.string(),
+        campaignId: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return sendBulkWhatsappMessages(barbershopId, input.clientIds, input.message, input.campaignId);
+      }),
+
+    interpolateTemplate: protectedProcedure
+      .input(z.object({
+        template: z.string(),
+        variables: z.record(z.string()),
+      }))
+      .query(({ input }) => {
+        return { result: interpolateTemplate(input.template, input.variables) };
       }),
   }),
 
-  // Message templates router
+  // ─── Message Templates ────────────────────────────────────────────────────────
+
   messageTemplates: router({
-    list: protectedProcedure.query(async () => {
-      return await db.getMessageTemplates();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      return db.getMessageTemplates(barbershopId);
     }),
-    
+
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
         type: z.enum(["appointment_reminder", "reactivation", "promotional", "custom"]),
         content: z.string(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.createMessageTemplate(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.createMessageTemplate({ ...input, barbershopId });
       }),
   }),
 
-  // Settings router
+  // ─── Settings ─────────────────────────────────────────────────────────────────
+
   settings: router({
     get: protectedProcedure
       .input(z.object({ key: z.string() }))
-      .query(async ({ input }) => {
-        return await db.getSetting(input.key);
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.getSetting(barbershopId, input.key);
       }),
-    
+
     upsert: protectedProcedure
       .input(z.object({
         key: z.string(),
         value: z.string(),
         description: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await db.upsertSetting(input);
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        return db.upsertSetting({ ...input, barbershopId });
       }),
   }),
+
+  // ─── Plans (gerenciado pelo dono) ────────────────────────────────────────────
+
+  plans: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const barbershopId = await getBarbershopId((ctx.user as any).id);
+      const db = await import("./db").then(m => m.getDb());
+      if (!db) return [];
+      return db.select().from(plans).where(eq(plans.barbershopId, barbershopId));
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        priceInCents: z.number(),
+        creditsPerMonth: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const db = await import("./db").then(m => m.getDb());
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Cria produto e preço no Stripe automaticamente
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-10-29.clover" });
+        const product = await stripe.products.create({ name: input.name, description: input.description });
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: input.priceInCents,
+          currency: "brl",
+          recurring: { interval: "month" },
+        });
+
+        const [plan] = await db.insert(plans).values({
+          ...input,
+          barbershopId,
+          stripePriceId: price.id,
+          stripeProductId: product.id,
+        }).returning();
+        return plan;
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const db = await import("./db").then(m => m.getDb());
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { id, ...data } = input;
+        const [plan] = await db.update(plans)
+          .set({ ...data, updatedAt: new Date() })
+          .where(and(eq(plans.id, id), eq(plans.barbershopId, barbershopId)))
+          .returning();
+        return plan;
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const db = await import("./db").then(m => m.getDb());
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        await db.delete(plans).where(and(eq(plans.id, input.id), eq(plans.barbershopId, barbershopId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Portal do Cliente (público) ─────────────────────────────────────────────
+  client: clientPortalRouter,
 });
 
 export type AppRouter = typeof appRouter;

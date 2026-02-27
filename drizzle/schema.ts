@@ -170,7 +170,9 @@ export const payments = pgTable("payments", {
   stripeSessionId: varchar("stripe_session_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  uniqueSessionId: unique("payments_stripe_session_id_unique").on(table.stripeSessionId),
+}));
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;

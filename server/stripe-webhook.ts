@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import { getDb } from "./db";
-import { payments } from "../drizzle/schema";
+import { payments, subscriptions, clientUsers, plans } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -29,35 +29,43 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // CRITICAL: Handle test events
   if (event.id.startsWith("evt_test_")) {
-    console.log("[Webhook] Test event detected, returning verification response");
-    return res.json({
-      verified: true,
-    });
+    console.log("[Webhook] Test event detected");
+    return res.json({ verified: true });
   }
 
-  console.log(`[Webhook] Received event: ${event.type} (${event.id})`);
+  console.log(`[Webhook] Received: ${event.type} (${event.id})`);
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutSessionCompleted(session);
+      case "checkout.session.completed":
+        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
         break;
-      }
 
-      case "payment_intent.succeeded": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentIntentSucceeded(paymentIntent);
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+        await handleSubscriptionUpsert(event.data.object as Stripe.Subscription);
         break;
-      }
 
-      case "payment_intent.payment_failed": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentIntentFailed(paymentIntent);
+      case "customer.subscription.deleted":
+        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
         break;
-      }
+
+      case "invoice.payment_succeeded":
+        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
+        break;
+
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
+      case "payment_intent.succeeded":
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+        break;
+
+      case "payment_intent.payment_failed":
+        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
 
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
@@ -70,76 +78,245 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 }
 
+// ─── checkout.session.completed ───────────────────────────────────────────────
+// Pagamentos avulsos (sem planId no metadata). Assinaturas são tratadas pelo
+// customer.subscription.created que o Stripe dispara logo em seguida.
+
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  console.log("[Webhook] Processing checkout.session.completed:", session.id);
+  console.log("[Webhook] checkout.session.completed:", session.id);
 
   const db = await getDb();
-  if (!db) {
-    console.error("[Webhook] Database not available");
-    return;
-  }
+  if (!db) return;
 
   const metadata = session.metadata || {};
-  const appointmentId = metadata.appointment_id ? parseInt(metadata.appointment_id) : null;
-  const clientId = metadata.client_id ? parseInt(metadata.client_id) : null;
+  const planId = metadata.plan_id;
 
-  if (!clientId) {
-    console.error("[Webhook] Missing client_id in session metadata");
+  // Se for checkout de assinatura, não registra pagamento aqui —
+  // isso será feito em invoice.payment_succeeded
+  if (planId) {
+    console.log("[Webhook] Subscription checkout — payment will be recorded via invoice event");
     return;
   }
 
-  // Atualizar ou criar registro de pagamento
+  // Pagamento avulso
+  const clientId = metadata.client_id ? parseInt(metadata.client_id) : null;
+  const barbershopId = metadata.barbershop_id ? parseInt(metadata.barbershop_id) : null;
+  const appointmentId = metadata.appointment_id ? parseInt(metadata.appointment_id) : null;
+
+  if (!clientId || !barbershopId) {
+    console.error("[Webhook] Missing client_id or barbershop_id in metadata");
+    return;
+  }
+
   await db.insert(payments).values({
     appointmentId,
     clientId,
+    barbershopId,
     amountInCents: session.amount_total || 0,
     status: "completed",
-    paymentMethod: session.payment_method_types?.[0] || "unknown",
-    stripePaymentIntentId: session.payment_intent as string,
+    paymentMethod: session.payment_method_types?.[0] || "card",
+    stripePaymentIntentId: session.payment_intent as string ?? undefined,
     stripeSessionId: session.id,
-    paidAt: new Date(),
   });
 
-  console.log("[Webhook] Payment recorded for client:", clientId);
+  console.log("[Webhook] One-time payment recorded for client:", clientId);
 }
+
+// ─── customer.subscription.created / updated ─────────────────────────────────
+// Ativa ou atualiza a assinatura no banco. Também renova créditos quando
+// o período muda (renovação mensal).
+
+async function handleSubscriptionUpsert(stripeSub: Stripe.Subscription) {
+  console.log("[Webhook] subscription upsert:", stripeSub.id, "status:", stripeSub.status);
+
+  const db = await getDb();
+  if (!db) return;
+
+  const customerId = stripeSub.customer as string;
+  const [clientUser] = await db
+    .select().from(clientUsers)
+    .where(eq(clientUsers.stripeCustomerId, customerId)).limit(1);
+
+  if (!clientUser) {
+    console.error("[Webhook] ClientUser not found for customer:", customerId);
+    return;
+  }
+
+  const priceId = stripeSub.items.data[0]?.price?.id;
+  if (!priceId) {
+    console.error("[Webhook] No priceId in subscription:", stripeSub.id);
+    return;
+  }
+
+  const [plan] = await db
+    .select().from(plans)
+    .where(eq(plans.stripePriceId, priceId)).limit(1);
+
+  if (!plan) {
+    console.error("[Webhook] Plan not found for priceId:", priceId);
+    return;
+  }
+
+  // ✅ Converte os timestamps com segurança
+  const periodStart = (stripeSub as any).current_period_start;
+  const periodEnd = (stripeSub as any).current_period_end;
+  const currentPeriodStart = periodStart && periodStart > 0 ? new Date(periodStart * 1000) : null;
+  const currentPeriodEnd = periodEnd && periodEnd > 0 ? new Date(periodEnd * 1000) : null;
+
+  const mappedStatus: "active" | "cancelled" | "past_due" | "trialing" =
+    stripeSub.status === "active" ? "active" :
+    stripeSub.status === "past_due" ? "past_due" :
+    stripeSub.status === "trialing" ? "trialing" :
+    "cancelled";
+
+  const [existing] = await db
+    .select().from(subscriptions)
+    .where(eq(subscriptions.clientUserId, clientUser.id)).limit(1);
+
+  if (existing) {
+    const isRenewal =
+      existing.currentPeriodStart !== null &&
+      currentPeriodStart !== null &&
+      currentPeriodStart.getTime() > new Date(existing.currentPeriodStart).getTime();
+
+    await db.update(subscriptions).set({
+      planId: plan.id,
+      barbershopId: plan.barbershopId,
+      status: mappedStatus,
+      stripeSubscriptionId: stripeSub.id,
+      ...(currentPeriodStart && { currentPeriodStart }),
+      ...(currentPeriodEnd && { currentPeriodEnd }),
+      creditsRemaining: isRenewal ? plan.creditsPerMonth : existing.creditsRemaining,
+      updatedAt: new Date(),
+    }).where(eq(subscriptions.id, existing.id));
+
+    console.log(`[Webhook] Subscription updated (renewal=${isRenewal}) for clientUser:`, clientUser.id);
+  } else {
+    await db.insert(subscriptions).values({
+      clientUserId: clientUser.id,
+      planId: plan.id,
+      barbershopId: plan.barbershopId,
+      status: mappedStatus,
+      stripeSubscriptionId: stripeSub.id,
+      creditsRemaining: plan.creditsPerMonth,
+      ...(currentPeriodStart && { currentPeriodStart }),
+      ...(currentPeriodEnd && { currentPeriodEnd }),
+    });
+
+    console.log("[Webhook] Subscription created for clientUser:", clientUser.id);
+  }
+}
+
+// ─── customer.subscription.deleted ───────────────────────────────────────────
+
+async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
+  console.log("[Webhook] subscription deleted:", stripeSub.id);
+
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(subscriptions).set({
+    status: "cancelled",
+    cancelledAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(subscriptions.stripeSubscriptionId, stripeSub.id));
+
+  console.log("[Webhook] Subscription cancelled:", stripeSub.id);
+}
+
+// ─── invoice.payment_succeeded ────────────────────────────────────────────────
+// Disparado em toda cobrança de assinatura bem-sucedida (inclusive a primeira).
+// Registra o pagamento no histórico financeiro da barbearia.
+// onConflictDoNothing garante idempotência — requer unique(stripe_session_id) no schema.
+
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  console.log("[Webhook] invoice.payment_succeeded:", invoice.id);
+
+  const db = await getDb();
+  if (!db) return;
+
+  const customerId = invoice.customer as string;
+  const [clientUser] = await db
+    .select().from(clientUsers)
+    .where(eq(clientUsers.stripeCustomerId, customerId)).limit(1);
+
+  if (!clientUser?.clientId) {
+    console.warn("[Webhook] ClientUser or clientId not found for customer:", customerId);
+    return;
+  }
+
+  // ✅ Busca barbershopId — se não achar, não registra pagamento (evita FK violation)
+  const [sub] = await db
+    .select({ barbershopId: subscriptions.barbershopId })
+    .from(subscriptions)
+    .where(eq(subscriptions.clientUserId, clientUser.id))
+    .limit(1);
+
+  if (!sub?.barbershopId) {
+    console.warn("[Webhook] No active subscription found yet for clientUser:", clientUser.id, "— skipping payment record");
+    return;
+  }
+
+  const paymentIntentId = typeof (invoice as any).payment_intent === "string"
+    ? (invoice as any).payment_intent as string
+    : undefined;
+
+  await db.insert(payments).values({
+    clientId: clientUser.clientId,
+    barbershopId: sub.barbershopId,
+    amountInCents: invoice.amount_paid,
+    status: "completed",
+    paymentMethod: "card",
+    ...(paymentIntentId && { stripePaymentIntentId: paymentIntentId }),
+    stripeSessionId: invoice.id,
+  }).onConflictDoNothing();
+
+  console.log("[Webhook] Invoice payment recorded for client:", clientUser.clientId);
+}
+
+// ─── invoice.payment_failed ───────────────────────────────────────────────────
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  console.log("[Webhook] invoice.payment_failed:", invoice.id);
+
+  const db = await getDb();
+  if (!db) return;
+
+  const customerId = invoice.customer as string;
+  const [clientUser] = await db
+    .select()
+    .from(clientUsers)
+    .where(eq(clientUsers.stripeCustomerId, customerId))
+    .limit(1);
+
+  if (!clientUser) return;
+
+  await db.update(subscriptions).set({
+    status: "past_due",
+    updatedAt: new Date(),
+  }).where(eq(subscriptions.clientUserId, clientUser.id));
+
+  console.log("[Webhook] Subscription marked as past_due for clientUser:", clientUser.id);
+}
+
+// ─── payment_intent.succeeded ─────────────────────────────────────────────────
 
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
-  console.log("[Webhook] Processing payment_intent.succeeded:", paymentIntent.id);
-
   const db = await getDb();
-  if (!db) {
-    console.error("[Webhook] Database not available");
-    return;
-  }
+  if (!db) return;
 
-  // Atualizar status do pagamento
-  const result = await db
-    .update(payments)
-    .set({
-      status: "completed",
-      paidAt: new Date(),
-    })
-    .where(eq(payments.stripePaymentIntentId, paymentIntent.id));
-
-  console.log("[Webhook] Payment updated:", paymentIntent.id);
+  await db.update(payments).set({
+    status: "completed",
+  }).where(eq(payments.stripePaymentIntentId, paymentIntent.id));
 }
 
+// ─── payment_intent.payment_failed ────────────────────────────────────────────
+
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
-  console.log("[Webhook] Processing payment_intent.payment_failed:", paymentIntent.id);
-
   const db = await getDb();
-  if (!db) {
-    console.error("[Webhook] Database not available");
-    return;
-  }
+  if (!db) return;
 
-  // Atualizar status do pagamento
-  await db
-    .update(payments)
-    .set({
-      status: "failed",
-    })
-    .where(eq(payments.stripePaymentIntentId, paymentIntent.id));
-
-  console.log("[Webhook] Payment marked as failed:", paymentIntent.id);
+  await db.update(payments).set({
+    status: "failed",
+  }).where(eq(payments.stripePaymentIntentId, paymentIntent.id));
 }

@@ -16,12 +16,14 @@ import Reports from "./pages/Reports";
 import Marketing from "./pages/Marketing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Plans from "./pages/Plans";
 
 // Portal do cliente
 import BarbershopPage from "./pages/portal/BarbershopPage";
 import BookingPage from "./pages/portal/BookingPage";
 import ClientAccountPage from "./pages/portal/ClientAccountPage";
 import { ClientLoginPage, ClientRegisterPage } from "./pages/portal/ClientAuthPages";
+import SubscribePage from "./pages/portal/Subscribepage";
 
 function Router() {
   return (
@@ -32,6 +34,7 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/clients" component={Clients} />
       <Route path="/barbers" component={Barbers} />
+      <Route path="/plans" component={Plans} />
       <Route path="/services" component={Services} />
       <Route path="/appointments" component={Appointments} />
       <Route path="/payments" component={Payments} />
@@ -42,6 +45,7 @@ function Router() {
       <Route path="/b/:slug" component={BarbershopPage} />
       <Route path="/b/:slug/agendar" component={BookingPage} />
       <Route path="/b/:slug/minha-conta" component={ClientAccountPage} />
+      <Route path="/b/:slug/assinar/:planId" component={SubscribePage} />
       <Route path="/b/:slug/login" component={ClientLoginPage} />
       <Route path="/b/:slug/cadastro" component={ClientRegisterPage} />
 

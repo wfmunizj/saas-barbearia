@@ -12,7 +12,7 @@ import {
   barbershops, plans, clientUsers, subscriptions,
   appointments, clients, barbers, services,
 } from "../drizzle/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 import Stripe from "stripe";
 
@@ -117,17 +117,16 @@ export const clientPortalRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const startOfDay = new Date(`${input.date}T00:00:00`);
-      const endOfDay = new Date(`${input.date}T23:59:59`);
+      const startOfDay = new Date(`${input.date}T00:00:00-03:00`);
+      const endOfDay   = new Date(`${input.date}T23:59:59-03:00`);
 
-      // Busca agendamentos já existentes neste dia para este barbeiro
       const existing = await db.select({ appointmentDate: appointments.appointmentDate })
         .from(appointments)
         .where(
           and(
             eq(appointments.barberId, input.barberId),
             gte(appointments.appointmentDate, startOfDay),
-            gte(endOfDay, appointments.appointmentDate),
+            lte(appointments.appointmentDate, endOfDay), 
           )
         );
 

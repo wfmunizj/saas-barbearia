@@ -4,21 +4,26 @@ import { trpc } from "@/lib/trpc";
 import { Calendar, DollarSign, Users, Scissors } from "lucide-react";
 
 export default function Home() {
-  const { data: clients, isLoading: loadingClients } = trpc.clients.list.useQuery();
-  const { data: barbers, isLoading: loadingBarbers } = trpc.barbers.list.useQuery();
-  const { data: appointments, isLoading: loadingAppointments } = trpc.appointments.list.useQuery();
-  const { data: payments, isLoading: loadingPayments } = trpc.payments.list.useQuery();
+  const { data: clients, isLoading: loadingClients } =
+    trpc.clients.list.useQuery();
+  const { data: barbers, isLoading: loadingBarbers } =
+    trpc.barbers.list.useQuery();
+  const { data: appointments, isLoading: loadingAppointments } =
+    trpc.appointments.list.useQuery();
+  const { data: payments, isLoading: loadingPayments } =
+    trpc.payments.list.useQuery();
 
   const totalClients = clients?.length || 0;
   const totalBarbers = barbers?.length || 0;
   const totalAppointments = appointments?.length || 0;
-  
-  const totalRevenue = payments?.reduce((sum, payment) => {
-    if (payment.status === 'completed') {
-      return sum + (payment.amountInCents / 100);
-    }
-    return sum;
-  }, 0) || 0;
+
+  const totalRevenue =
+    payments?.reduce((sum, payment) => {
+      if (payment.status === "completed") {
+        return sum + payment.amountInCents / 100;
+      }
+      return sum;
+    }, 0) || 0;
 
   const stats = [
     {
@@ -58,7 +63,7 @@ export default function Home() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => {
+          {stats.map(stat => {
             const Icon = stat.icon;
             return (
               <Card key={stat.title}>
@@ -88,33 +93,54 @@ export default function Home() {
             <CardContent>
               {loadingAppointments ? (
                 <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-16 animate-pulse bg-muted rounded" />
+                  {[1, 2, 3].map(i => (
+                    <div
+                      key={i}
+                      className="h-16 animate-pulse bg-muted rounded"
+                    />
                   ))}
                 </div>
               ) : appointments && appointments.length > 0 ? (
                 <div className="space-y-3">
-                  {appointments.slice(0, 5).map((appointment) => (
-                    <div
-                      key={appointment.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">Cliente #{appointment.clientId}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(appointment.appointmentDate).toLocaleString('pt-BR')}
-                        </p>
+                  {appointments.slice(0, 5).map(appointment => {
+                    const client = clients?.find(
+                      c => c.id === appointment.clientId
+                    );
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            Cliente: {client?.name || appointment.clientId}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(
+                              appointment.appointmentDate
+                            ).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full ${
+                            appointment.status === "confirmed"
+                              ? "bg-green-100 text-green-800"
+                              : appointment.status === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : appointment.status === "completed"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {appointment.status === "pending" && "Pendente"}
+                          {appointment.status === "confirmed" && "Confirmado"}
+                          {appointment.status === "completed" && "Concluído"}
+                          {appointment.status === "cancelled" && "Cancelado"}
+                          {/* <=== removido: {appointment.status} */}
+                        </span>
                       </div>
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                        appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        appointment.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {appointment.status}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">

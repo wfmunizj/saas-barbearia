@@ -12,11 +12,14 @@ import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { COOKIE_NAME } from "@shared/const";
+import { ENV } from "./_core/env";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function hashPassword(password: string, salt: string): string {
-  return createHash("sha256").update(password + salt).digest("hex");
+  return createHash("sha256")
+    .update(password + salt)
+    .digest("hex");
 }
 
 function generateSalt(): string {
@@ -53,63 +56,92 @@ export async function registerBarbershop(req: Request, res: Response) {
     const { barbershopName, ownerName, email, password } = req.body;
 
     if (!barbershopName || !ownerName || !email || !password) {
-      return res.status(400).json({ error: "Todos os campos são obrigatórios" });
+      return res
+        .status(400)
+        .json({ error: "Todos os campos são obrigatórios" });
     }
 
     if (password.length < 8) {
-      return res.status(400).json({ error: "A senha deve ter pelo menos 8 caracteres" });
+      return res
+        .status(400)
+        .json({ error: "A senha deve ter pelo menos 8 caracteres" });
     }
 
     const db = await getDb();
-    if (!db) return res.status(500).json({ error: "Banco de dados indisponível" });
+    if (!db)
+      return res.status(500).json({ error: "Banco de dados indisponível" });
 
     // Verifica se email já existe
-    const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
     if (existingUser.length > 0) {
       return res.status(409).json({ error: "Este email já está cadastrado" });
     }
 
     // Gera slug único para a barbearia
     let slug = generateSlug(barbershopName);
-    const existingSlug = await db.select().from(barbershops).where(eq(barbershops.slug, slug)).limit(1);
+    const existingSlug = await db
+      .select()
+      .from(barbershops)
+      .where(eq(barbershops.slug, slug))
+      .limit(1);
     if (existingSlug.length > 0) {
       slug = `${slug}-${randomBytes(3).toString("hex")}`;
     }
 
     // Cria a barbearia
-    const [barbershop] = await db.insert(barbershops).values({
-      name: barbershopName,
-      slug,
-      email,
-      plan: "free",
-      isActive: true,
-    }).returning();
+    const [barbershop] = await db
+      .insert(barbershops)
+      .values({
+        name: barbershopName,
+        slug,
+        email,
+        plan: "free",
+        isActive: true,
+      })
+      .returning();
 
     // Cria o usuário owner
     const passwordHash = createPasswordHash(password);
-    const [user] = await db.insert(users).values({
-      barbershopId: barbershop.id,
-      name: ownerName,
-      email,
-      passwordHash,
-      loginMethod: "email",
-      role: "owner",
-      isActive: true,
-      lastSignedIn: new Date(),
-    }).returning();
+    const [user] = await db
+      .insert(users)
+      .values({
+        barbershopId: barbershop.id,
+        name: ownerName,
+        email,
+        passwordHash,
+        loginMethod: "email",
+        role: "owner",
+        isActive: true,
+        lastSignedIn: new Date(),
+      })
+      .returning();
 
     // Gera session token
-    const sessionToken = await sdk.createSessionToken(user.id.toString(), {
-      name: ownerName,
+    const sessionToken = await sdk.signSession({
+      openId: user.id.toString(),
+      appId: ENV.appId,
+      name: user.name || "",
     });
-
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
     return res.json({
       success: true,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
-      barbershop: { id: barbershop.id, name: barbershop.name, slug: barbershop.slug },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      barbershop: {
+        id: barbershop.id,
+        name: barbershop.name,
+        slug: barbershop.slug,
+      },
     });
   } catch (error) {
     console.error("[Auth] Register error:", error);
@@ -128,16 +160,23 @@ export async function loginWithEmail(req: Request, res: Response) {
     }
 
     const db = await getDb();
-    if (!db) return res.status(500).json({ error: "Banco de dados indisponível" });
+    if (!db)
+      return res.status(500).json({ error: "Banco de dados indisponível" });
 
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
 
     if (!user || !user.passwordHash) {
       return res.status(401).json({ error: "Email ou senha incorretos" });
     }
 
     if (!user.isActive) {
-      return res.status(403).json({ error: "Conta desativada. Entre em contato com o suporte." });
+      return res
+        .status(403)
+        .json({ error: "Conta desativada. Entre em contato com o suporte." });
     }
 
     const passwordValid = verifyPassword(password, user.passwordHash);
@@ -146,7 +185,10 @@ export async function loginWithEmail(req: Request, res: Response) {
     }
 
     // Atualiza lastSignedIn
-    await db.update(users).set({ lastSignedIn: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id));
+    await db
+      .update(users)
+      .set({ lastSignedIn: new Date(), updatedAt: new Date() })
+      .where(eq(users.id, user.id));
 
     const sessionToken = await sdk.createSessionToken(user.id.toString(), {
       name: user.name || "",
@@ -158,13 +200,24 @@ export async function loginWithEmail(req: Request, res: Response) {
     // Busca dados da barbearia
     let barbershop = null;
     if (user.barbershopId) {
-      const [bs] = await db.select().from(barbershops).where(eq(barbershops.id, user.barbershopId)).limit(1);
-      barbershop = bs ? { id: bs.id, name: bs.name, slug: bs.slug, plan: bs.plan } : null;
+      const [bs] = await db
+        .select()
+        .from(barbershops)
+        .where(eq(barbershops.id, user.barbershopId))
+        .limit(1);
+      barbershop = bs
+        ? { id: bs.id, name: bs.name, slug: bs.slug, plan: bs.plan }
+        : null;
     }
 
     return res.json({
       success: true,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
       barbershop,
     });
   } catch (error) {
@@ -178,7 +231,8 @@ export async function loginWithEmail(req: Request, res: Response) {
 export async function getCurrentUser(req: Request, res: Response) {
   try {
     const db = await getDb();
-    if (!db) return res.status(500).json({ error: "Banco de dados indisponível" });
+    if (!db)
+      return res.status(500).json({ error: "Banco de dados indisponível" });
 
     // Tenta autenticar via session cookie
     const cookies = req.headers.cookie ?? "";
@@ -202,17 +256,32 @@ export async function getCurrentUser(req: Request, res: Response) {
       return res.status(401).json({ error: "Sessão inválida" });
     }
 
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
     if (!user) return res.status(401).json({ error: "Usuário não encontrado" });
 
     let barbershop = null;
     if (user.barbershopId) {
-      const [bs] = await db.select().from(barbershops).where(eq(barbershops.id, user.barbershopId)).limit(1);
-      barbershop = bs ? { id: bs.id, name: bs.name, slug: bs.slug, plan: bs.plan } : null;
+      const [bs] = await db
+        .select()
+        .from(barbershops)
+        .where(eq(barbershops.id, user.barbershopId))
+        .limit(1);
+      barbershop = bs
+        ? { id: bs.id, name: bs.name, slug: bs.slug, plan: bs.plan }
+        : null;
     }
 
     return res.json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
       barbershop,
     });
   } catch (error) {

@@ -17,6 +17,7 @@ import Marketing from "./pages/Marketing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Plans from "./pages/Plans";
+import TeamAccess from "./pages/TeamAccess";
 
 // Portal do cliente
 import BarbershopPage from "./pages/portal/BarbershopPage";
@@ -40,7 +41,7 @@ function Router() {
       <Route path="/payments" component={Payments} />
       <Route path="/reports" component={Reports} />
       <Route path="/marketing" component={Marketing} />
-
+      <Route path="/team-access" component={TeamAccess} />
       {/* ─── Portal público da barbearia ──────────────────────── */}
       <Route path="/b/:slug" component={BarbershopPage} />
       <Route path="/b/:slug/agendar" component={BookingPage} />

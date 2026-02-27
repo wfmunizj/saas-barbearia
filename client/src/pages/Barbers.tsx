@@ -12,9 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -22,7 +27,7 @@ export default function Barbers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBarber, setEditingBarber] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -31,6 +36,8 @@ export default function Barbers() {
   });
 
   const { data: barbers, isLoading, refetch } = trpc.barbers.list.useQuery();
+  const { data: appointments } = trpc.appointments.list.useQuery();
+
   const createMutation = trpc.barbers.create.useMutation({
     onSuccess: () => {
       toast.success("Barbeiro criado com sucesso!");
@@ -94,6 +101,15 @@ export default function Barbers() {
     if (confirm("Tem certeza que deseja remover este barbeiro?")) {
       deleteMutation.mutate({ id });
     }
+  };
+
+  // Verifica se o barbeiro tem agendamentos ativos (pending ou confirmed)
+  const hasActiveAppointments = (barberId: number) => {
+    return appointments?.some(
+      (a) =>
+        a.barberId === barberId &&
+        (a.status === "pending" || a.status === "confirmed")
+    ) ?? false;
   };
 
   const filteredBarbers = barbers?.filter((barber) =>
@@ -215,49 +231,79 @@ export default function Barbers() {
               </div>
             ) : filteredBarbers && filteredBarbers.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredBarbers.map((barber) => (
-                  <div
-                    key={barber.id}
-                    className="p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-lg">{barber.name}</h3>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleEdit(barber)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleDelete(barber.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                {filteredBarbers.map((barber) => {
+                  const blocked = hasActiveAppointments(barber.id);
+                  return (
+                    <div
+                      key={barber.id}
+                      className="p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-lg">{barber.name}</h3>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEdit(barber)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+
+                          {blocked ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-40 cursor-not-allowed"
+                                  onClick={(e) => e.preventDefault()}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-72 text-sm" side="left">
+                                <div className="flex gap-2">
+                                  <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="font-semibold mb-1">Exclusão bloqueada</p>
+                                    <p className="text-muted-foreground">
+                                      Este barbeiro possui agendamentos pendentes ou confirmados. Conclua ou cancele todos os agendamentos antes de removê-lo.
+                                    </p>
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleDelete(barber.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
+                      {barber.phone && (
+                        <p className="text-sm text-muted-foreground">
+                          📞 {barber.phone}
+                        </p>
+                      )}
+                      {barber.email && (
+                        <p className="text-sm text-muted-foreground">
+                          ✉️ {barber.email}
+                        </p>
+                      )}
+                      {barber.specialties && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          <strong>Especialidades:</strong> {barber.specialties}
+                        </p>
+                      )}
                     </div>
-                    {barber.phone && (
-                      <p className="text-sm text-muted-foreground">
-                        📞 {barber.phone}
-                      </p>
-                    )}
-                    {barber.email && (
-                      <p className="text-sm text-muted-foreground">
-                        ✉️ {barber.email}
-                      </p>
-                    )}
-                    {barber.specialties && (
-                      <p className="text-sm text-muted-foreground mt-2">
-                        <strong>Especialidades:</strong> {barber.specialties}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-center text-muted-foreground py-8">

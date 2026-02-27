@@ -213,7 +213,30 @@ export async function updateBarber(id: number, barbershopId: number, data: Parti
 export async function deleteBarber(id: number, barbershopId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(barbers).where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)));
+
+  // 1. Busca os IDs dos agendamentos desse barbeiro
+  const barberAppointments = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
+
+  // 2. Remove os pagamentos vinculados a esses agendamentos
+  for (const appointment of barberAppointments) {
+    await db.delete(payments)
+      .where(eq(payments.appointmentId, appointment.id));
+  }
+
+  // 3. Remove os agendamentos
+  await db.delete(appointments)
+    .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
+
+  // 4. Remove os horários
+  await db.delete(barberSchedules)
+    .where(and(eq(barberSchedules.barberId, id), eq(barberSchedules.barbershopId, barbershopId)));
+
+  // 5. Remove o barbeiro
+  await db.delete(barbers)
+    .where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)));
 }
 
 // ─── Barber Schedules ─────────────────────────────────────────────────────────
@@ -268,21 +291,51 @@ export async function updateService(id: number, barbershopId: number, data: Part
   return result[0];
 }
 
+export async function getBarberByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(barbers).where(eq(barbers.userId, userId)).limit(1);
+  return result[0];
+}
+
 export async function deleteService(id: number, barbershopId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(services).where(and(eq(services.id, id), eq(services.barbershopId, barbershopId)));
+
+  // 1. Busca os agendamentos vinculados a esse serviço
+  const serviceAppointments = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(and(eq(appointments.serviceId, id), eq(appointments.barbershopId, barbershopId)));
+
+  // 2. Remove os pagamentos vinculados a esses agendamentos
+  for (const appointment of serviceAppointments) {
+    await db.delete(payments)
+      .where(eq(payments.appointmentId, appointment.id));
+  }
+
+  // 3. Remove os agendamentos
+  await db.delete(appointments)
+    .where(and(eq(appointments.serviceId, id), eq(appointments.barbershopId, barbershopId)));
+
+  // 4. Remove o serviço
+  await db.delete(services)
+    .where(and(eq(services.id, id), eq(services.barbershopId, barbershopId)));
 }
 
 // ─── Appointments ─────────────────────────────────────────────────────────────
 
-export async function getAppointments(barbershopId: number, filters?: { startDate?: Date; endDate?: Date }) {
+export async function getAppointments(
+  barbershopId: number,
+  filters?: { startDate?: Date; endDate?: Date; barberId?: number }
+) {
   const db = await getDb();
   if (!db) return [];
 
   const conditions = [eq(appointments.barbershopId, barbershopId)];
   if (filters?.startDate) conditions.push(gte(appointments.appointmentDate, filters.startDate));
   if (filters?.endDate) conditions.push(lte(appointments.appointmentDate, filters.endDate));
+  if (filters?.barberId) conditions.push(eq(appointments.barberId, filters.barberId));
 
   return db.select().from(appointments).where(and(...conditions)).orderBy(desc(appointments.appointmentDate));
 }
@@ -324,10 +377,26 @@ export async function checkAppointmentConflict(barberId: number, barbershopId: n
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
-export async function getPayments(barbershopId: number) {
+export async function getPayments(barbershopId: number, barberId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(payments).where(eq(payments.barbershopId, barbershopId)).orderBy(desc(payments.createdAt));
+  
+  if (barberId) {
+    // Filtra pagamentos dos agendamentos deste barbeiro
+    return db
+      .select()
+      .from(payments)
+      .innerJoin(appointments, eq(payments.appointmentId, appointments.id))
+      .where(and(
+        eq(payments.barbershopId, barbershopId),
+        eq(appointments.barberId, barberId)
+      ))
+      .orderBy(desc(payments.createdAt));
+  }
+  
+  return db.select().from(payments)
+    .where(eq(payments.barbershopId, barbershopId))
+    .orderBy(desc(payments.createdAt));
 }
 
 export async function createPayment(data: InsertPayment) {

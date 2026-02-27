@@ -21,23 +21,37 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Scissors, Calendar, CreditCard, BarChart3, MessageSquare, Tag, Star } from "lucide-react";
+import {
+  LayoutDashboard,
+  LogOut,
+  PanelLeft,
+  Users,
+  Scissors,
+  Calendar,
+  CreditCard,
+  BarChart3,
+  MessageSquare,
+  Tag,
+  Star,
+  Users2,
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Calendar, label: "Agendamentos", path: "/appointments" },
-  { icon: Users, label: "Clientes", path: "/clients" },
-  { icon: Scissors, label: "Barbeiros", path: "/barbers" },
-  { icon: Tag, label: "Serviços", path: "/services" },
-  { icon: CreditCard, label: "Pagamentos", path: "/payments" },
-  { icon: BarChart3, label: "Relatórios", path: "/reports" },
-  { icon: MessageSquare, label: "Marketing", path: "/marketing" },
-  { icon: Star, label: "Planos", path: "/plans" },
-
+// Itens com campo `roles`: quais roles podem ver. undefined = todos.
+const allMenuItems = [
+  { icon: LayoutDashboard, label: "Dashboard",     path: "/",            roles: undefined },
+  { icon: Calendar,        label: "Agendamentos",  path: "/appointments",roles: undefined },
+  { icon: Users,           label: "Clientes",      path: "/clients",     roles: ["owner"] },
+  { icon: Scissors,        label: "Barbeiros",     path: "/barbers",     roles: ["owner"] },
+  { icon: Tag,             label: "Serviços",      path: "/services",    roles: ["owner"] },
+  { icon: CreditCard,      label: "Pagamentos",    path: "/payments",    roles: undefined },
+  { icon: BarChart3,       label: "Relatórios",    path: "/reports",     roles: ["owner"] },
+  { icon: MessageSquare,   label: "Marketing",     path: "/marketing",   roles: ["owner"] },
+  { icon: Star,            label: "Planos",        path: "/plans",       roles: ["owner"] },
+  { icon: Users2,           label: "Acesso da Equipe", path: "/team-access", roles: ["owner"] },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -137,8 +151,15 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+
+  // Filtra o menu baseado no role do usuário
+  const role = (user as any)?.role ?? "barber";
+  const menuItems = allMenuItems.filter(
+    (item) => !item.roles || item.roles.includes(role)
+  );
+
+  const activeMenuItem = menuItems.find((item) => item.path === location);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -149,42 +170,33 @@ function DashboardLayoutContent({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
+      const sidebarLeft =
+        sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const newWidth = Math.min(
+        Math.max(e.clientX - sidebarLeft, MIN_WIDTH),
+        MAX_WIDTH
+      );
+      setSidebarWidth(newWidth);
     };
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
+    const handleMouseUp = () => setIsResizing(false);
 
     if (isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
     }
-
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
     };
   }, [isResizing, setSidebarWidth]);
 
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar
-          collapsible="icon"
-          className="border-r-0"
-          disableTransition={isResizing}
-        >
-          <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
+        <Sidebar collapsible="icon">
+          <SidebarHeader className="p-3 border-b">
+            <div className="flex items-center gap-3 min-w-0 h-10">
               {isCollapsed ? (
                 <div className="relative h-8 w-8 shrink-0 group">
                   <img
@@ -224,7 +236,7 @@ function DashboardLayoutContent({
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
+              {menuItems.map((item) => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
@@ -246,6 +258,18 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
+            {/* Badge de role */}
+            {!isCollapsed && (
+              <div className="px-1 pb-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  role === "owner"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {role === "owner" ? "Proprietário" : "Barbeiro"}
+                </span>
+              </div>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -278,7 +302,9 @@ function DashboardLayoutContent({
         </Sidebar>
 
         <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${
+            isCollapsed ? "hidden" : ""
+          }`}
           onMouseDown={() => {
             if (isCollapsed) return;
             setIsResizing(true);

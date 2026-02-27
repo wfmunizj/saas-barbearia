@@ -16,6 +16,7 @@ import { clientAuthRouter } from "../clientAuth";
 import { getDb } from "../db";
 import { users, barbershops } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { barberUserRouter } from "../barberUserRoutes";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -57,45 +58,53 @@ async function startServer() {
   // Auth própria (register, login, logout, me)
   app.use("/api/auth", authRouter);
   app.use("/api/client", clientAuthRouter);
+  app.use("/api/barber-users", barberUserRouter);
 
   // Development helper: cria sessão mock automaticamente para o primeiro owner
-  if (process.env.NODE_ENV === "development") {
-    app.use(async (req, res, next) => {
-      try {
-        const cookieHeader = req.headers.cookie ?? "";
-        if (!cookieHeader.includes(COOKIE_NAME)) {
-          const db = await getDb();
-          if (db) {
-            // Busca o primeiro usuário owner no banco para usar como mock
-            const [ownerUser] = await db
-              .select()
-              .from(users)
-              .where(eq(users.role, "owner"))
-              .limit(1);
+  // if (process.env.NODE_ENV === "development") {
+  //   app.use(async (req, res, next) => {
+  //     try {
+  //       const cookieHeader = req.headers.cookie ?? "";
+  //       if (!cookieHeader.includes(COOKIE_NAME)) {
+  //         const db = await getDb();
+  //         if (db) {
+  //           // Busca o primeiro usuário owner no banco para usar como mock
+  //           const [ownerUser] = await db
+  //             .select()
+  //             .from(users)
+  //             .where(eq(users.role, "owner"))
+  //             .limit(1);
 
-            if (ownerUser) {
-              const token = await sdk.createSessionToken(ownerUser.id.toString(), {
-                name: ownerUser.name || "Owner",
-              });
-              res.cookie(COOKIE_NAME, token, {
-                httpOnly: true,
-                maxAge: ONE_YEAR_MS,
-                path: "/",
-                sameSite: "lax",
-                secure: false,
-              });
-              console.log(`[Dev] Mock session para user id=${ownerUser.id} (${ownerUser.email})`);
-            } else {
-              console.log("[Dev] Nenhum owner encontrado no banco — faça cadastro em /register");
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("[Dev] Failed to set mock session cookie:", err);
-      }
-      next();
-    });
-  }
+  //           if (ownerUser) {
+  //             const token = await sdk.createSessionToken(
+  //               ownerUser.id.toString(),
+  //               {
+  //                 name: ownerUser.name || "Owner",
+  //               }
+  //             );
+  //             res.cookie(COOKIE_NAME, token, {
+  //               httpOnly: true,
+  //               maxAge: ONE_YEAR_MS,
+  //               path: "/",
+  //               sameSite: "lax",
+  //               secure: false,
+  //             });
+  //             console.log(
+  //               `[Dev] Mock session para user id=${ownerUser.id} (${ownerUser.email})`
+  //             );
+  //           } else {
+  //             console.log(
+  //               "[Dev] Nenhum owner encontrado no banco — faça cadastro em /register"
+  //             );
+  //           }
+  //         }
+  //       }
+  //     } catch (err) {
+  //       console.warn("[Dev] Failed to set mock session cookie:", err);
+  //     }
+  //     next();
+  //   });
+  // }
 
   // tRPC API
   app.use(

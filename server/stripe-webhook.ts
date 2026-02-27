@@ -39,20 +39,28 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   try {
     switch (event.type) {
       case "checkout.session.completed":
-        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+        await handleCheckoutSessionCompleted(
+          event.data.object as Stripe.Checkout.Session
+        );
         break;
 
       case "customer.subscription.created":
       case "customer.subscription.updated":
-        await handleSubscriptionUpsert(event.data.object as Stripe.Subscription);
+        await handleSubscriptionUpsert(
+          event.data.object as Stripe.Subscription
+        );
         break;
 
       case "customer.subscription.deleted":
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        await handleSubscriptionDeleted(
+          event.data.object as Stripe.Subscription
+        );
         break;
 
       case "invoice.payment_succeeded":
-        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
+        await handleInvoicePaymentSucceeded(
+          event.data.object as Stripe.Invoice
+        );
         break;
 
       case "invoice.payment_failed":
@@ -60,11 +68,15 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         break;
 
       case "payment_intent.succeeded":
-        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentIntentSucceeded(
+          event.data.object as Stripe.PaymentIntent
+        );
         break;
 
       case "payment_intent.payment_failed":
-        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentIntentFailed(
+          event.data.object as Stripe.PaymentIntent
+        );
         break;
 
       default:
@@ -82,7 +94,9 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 // Pagamentos avulsos (sem planId no metadata). Assinaturas são tratadas pelo
 // customer.subscription.created que o Stripe dispara logo em seguida.
 
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session
+) {
   console.log("[Webhook] checkout.session.completed:", session.id);
 
   const db = await getDb();
@@ -94,14 +108,20 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   // Se for checkout de assinatura, não registra pagamento aqui —
   // isso será feito em invoice.payment_succeeded
   if (planId) {
-    console.log("[Webhook] Subscription checkout — payment will be recorded via invoice event");
+    console.log(
+      "[Webhook] Subscription checkout — payment will be recorded via invoice event"
+    );
     return;
   }
 
   // Pagamento avulso
   const clientId = metadata.client_id ? parseInt(metadata.client_id) : null;
-  const barbershopId = metadata.barbershop_id ? parseInt(metadata.barbershop_id) : null;
-  const appointmentId = metadata.appointment_id ? parseInt(metadata.appointment_id) : null;
+  const barbershopId = metadata.barbershop_id
+    ? parseInt(metadata.barbershop_id)
+    : null;
+  const appointmentId = metadata.appointment_id
+    ? parseInt(metadata.appointment_id)
+    : null;
 
   if (!clientId || !barbershopId) {
     console.error("[Webhook] Missing client_id or barbershop_id in metadata");
@@ -115,7 +135,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     amountInCents: session.amount_total || 0,
     status: "completed",
     paymentMethod: session.payment_method_types?.[0] || "card",
-    stripePaymentIntentId: session.payment_intent as string ?? undefined,
+    stripePaymentIntentId: (session.payment_intent as string) ?? undefined,
     stripeSessionId: session.id,
   });
 
@@ -127,15 +147,22 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 // o período muda (renovação mensal).
 
 async function handleSubscriptionUpsert(stripeSub: Stripe.Subscription) {
-  console.log("[Webhook] subscription upsert:", stripeSub.id, "status:", stripeSub.status);
+  console.log(
+    "[Webhook] subscription upsert:",
+    stripeSub.id,
+    "status:",
+    stripeSub.status
+  );
 
   const db = await getDb();
   if (!db) return;
 
   const customerId = stripeSub.customer as string;
   const [clientUser] = await db
-    .select().from(clientUsers)
-    .where(eq(clientUsers.stripeCustomerId, customerId)).limit(1);
+    .select()
+    .from(clientUsers)
+    .where(eq(clientUsers.stripeCustomerId, customerId))
+    .limit(1);
 
   if (!clientUser) {
     console.error("[Webhook] ClientUser not found for customer:", customerId);
@@ -149,8 +176,10 @@ async function handleSubscriptionUpsert(stripeSub: Stripe.Subscription) {
   }
 
   const [plan] = await db
-    .select().from(plans)
-    .where(eq(plans.stripePriceId, priceId)).limit(1);
+    .select()
+    .from(plans)
+    .where(eq(plans.stripePriceId, priceId))
+    .limit(1);
 
   if (!plan) {
     console.error("[Webhook] Plan not found for priceId:", priceId);
@@ -160,37 +189,58 @@ async function handleSubscriptionUpsert(stripeSub: Stripe.Subscription) {
   // ✅ Converte os timestamps com segurança
   const periodStart = (stripeSub as any).current_period_start;
   const periodEnd = (stripeSub as any).current_period_end;
-  const currentPeriodStart = periodStart && periodStart > 0 ? new Date(periodStart * 1000) : null;
-  const currentPeriodEnd = periodEnd && periodEnd > 0 ? new Date(periodEnd * 1000) : null;
+  const currentPeriodStart =
+    periodStart && periodStart > 0 ? new Date(periodStart * 1000) : null;
+  const currentPeriodEnd =
+    periodEnd && periodEnd > 0 ? new Date(periodEnd * 1000) : null;
 
   const mappedStatus: "active" | "cancelled" | "past_due" | "trialing" =
-    stripeSub.status === "active" ? "active" :
-    stripeSub.status === "past_due" ? "past_due" :
-    stripeSub.status === "trialing" ? "trialing" :
-    "cancelled";
+    stripeSub.status === "active"
+      ? "active"
+      : stripeSub.status === "past_due"
+        ? "past_due"
+        : stripeSub.status === "trialing"
+          ? "trialing"
+          : "cancelled";
 
   const [existing] = await db
-    .select().from(subscriptions)
-    .where(eq(subscriptions.clientUserId, clientUser.id)).limit(1);
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.clientUserId, clientUser.id))
+    .limit(1);
 
   if (existing) {
+    const isNewSubscription = existing.stripeSubscriptionId !== stripeSub.id;
+
     const isRenewal =
+      !isNewSubscription &&
       existing.currentPeriodStart !== null &&
       currentPeriodStart !== null &&
-      currentPeriodStart.getTime() > new Date(existing.currentPeriodStart).getTime();
+      currentPeriodStart.getTime() >
+        new Date(existing.currentPeriodStart).getTime();
 
-    await db.update(subscriptions).set({
-      planId: plan.id,
-      barbershopId: plan.barbershopId,
-      status: mappedStatus,
-      stripeSubscriptionId: stripeSub.id,
-      ...(currentPeriodStart && { currentPeriodStart }),
-      ...(currentPeriodEnd && { currentPeriodEnd }),
-      creditsRemaining: isRenewal ? plan.creditsPerMonth : existing.creditsRemaining,
-      updatedAt: new Date(),
-    }).where(eq(subscriptions.id, existing.id));
+    const shouldResetCredits = isNewSubscription || isRenewal;
 
-    console.log(`[Webhook] Subscription updated (renewal=${isRenewal}) for clientUser:`, clientUser.id);
+    await db
+      .update(subscriptions)
+      .set({
+        planId: plan.id,
+        barbershopId: plan.barbershopId,
+        status: mappedStatus,
+        stripeSubscriptionId: stripeSub.id,
+        ...(currentPeriodStart && { currentPeriodStart }),
+        ...(currentPeriodEnd && { currentPeriodEnd }),
+        creditsRemaining: shouldResetCredits
+          ? plan.creditsPerMonth
+          : existing.creditsRemaining,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptions.id, existing.id));
+
+    console.log(
+      `[Webhook] Subscription updated (renewal=${isRenewal}, newSub=${isNewSubscription}) for clientUser:`,
+      clientUser.id
+    );
   } else {
     await db.insert(subscriptions).values({
       clientUserId: clientUser.id,
@@ -203,7 +253,10 @@ async function handleSubscriptionUpsert(stripeSub: Stripe.Subscription) {
       ...(currentPeriodEnd && { currentPeriodEnd }),
     });
 
-    console.log("[Webhook] Subscription created for clientUser:", clientUser.id);
+    console.log(
+      "[Webhook] Subscription created for clientUser:",
+      clientUser.id
+    );
   }
 }
 
@@ -215,11 +268,14 @@ async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
   const db = await getDb();
   if (!db) return;
 
-  await db.update(subscriptions).set({
-    status: "cancelled",
-    cancelledAt: new Date(),
-    updatedAt: new Date(),
-  }).where(eq(subscriptions.stripeSubscriptionId, stripeSub.id));
+  await db
+    .update(subscriptions)
+    .set({
+      status: "cancelled",
+      cancelledAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptions.stripeSubscriptionId, stripeSub.id));
 
   console.log("[Webhook] Subscription cancelled:", stripeSub.id);
 }
@@ -237,11 +293,16 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
   const customerId = invoice.customer as string;
   const [clientUser] = await db
-    .select().from(clientUsers)
-    .where(eq(clientUsers.stripeCustomerId, customerId)).limit(1);
+    .select()
+    .from(clientUsers)
+    .where(eq(clientUsers.stripeCustomerId, customerId))
+    .limit(1);
 
   if (!clientUser?.clientId) {
-    console.warn("[Webhook] ClientUser or clientId not found for customer:", customerId);
+    console.warn(
+      "[Webhook] ClientUser or clientId not found for customer:",
+      customerId
+    );
     return;
   }
 
@@ -253,25 +314,36 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
     .limit(1);
 
   if (!sub?.barbershopId) {
-    console.warn("[Webhook] No active subscription found yet for clientUser:", clientUser.id, "— skipping payment record");
+    console.warn(
+      "[Webhook] No active subscription found yet for clientUser:",
+      clientUser.id,
+      "— skipping payment record"
+    );
     return;
   }
 
-  const paymentIntentId = typeof (invoice as any).payment_intent === "string"
-    ? (invoice as any).payment_intent as string
-    : undefined;
+  const paymentIntentId =
+    typeof (invoice as any).payment_intent === "string"
+      ? ((invoice as any).payment_intent as string)
+      : undefined;
 
-  await db.insert(payments).values({
-    clientId: clientUser.clientId,
-    barbershopId: sub.barbershopId,
-    amountInCents: invoice.amount_paid,
-    status: "completed",
-    paymentMethod: "card",
-    ...(paymentIntentId && { stripePaymentIntentId: paymentIntentId }),
-    stripeSessionId: invoice.id,
-  }).onConflictDoNothing();
+  await db
+    .insert(payments)
+    .values({
+      clientId: clientUser.clientId,
+      barbershopId: sub.barbershopId,
+      amountInCents: invoice.amount_paid,
+      status: "completed",
+      paymentMethod: "card",
+      ...(paymentIntentId && { stripePaymentIntentId: paymentIntentId }),
+      stripeSessionId: invoice.id,
+    })
+    .onConflictDoNothing();
 
-  console.log("[Webhook] Invoice payment recorded for client:", clientUser.clientId);
+  console.log(
+    "[Webhook] Invoice payment recorded for client:",
+    clientUser.clientId
+  );
 }
 
 // ─── invoice.payment_failed ───────────────────────────────────────────────────
@@ -291,23 +363,34 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
   if (!clientUser) return;
 
-  await db.update(subscriptions).set({
-    status: "past_due",
-    updatedAt: new Date(),
-  }).where(eq(subscriptions.clientUserId, clientUser.id));
+  await db
+    .update(subscriptions)
+    .set({
+      status: "past_due",
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptions.clientUserId, clientUser.id));
 
-  console.log("[Webhook] Subscription marked as past_due for clientUser:", clientUser.id);
+  console.log(
+    "[Webhook] Subscription marked as past_due for clientUser:",
+    clientUser.id
+  );
 }
 
 // ─── payment_intent.succeeded ─────────────────────────────────────────────────
 
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
+) {
   const db = await getDb();
   if (!db) return;
 
-  await db.update(payments).set({
-    status: "completed",
-  }).where(eq(payments.stripePaymentIntentId, paymentIntent.id));
+  await db
+    .update(payments)
+    .set({
+      status: "completed",
+    })
+    .where(eq(payments.stripePaymentIntentId, paymentIntent.id));
 }
 
 // ─── payment_intent.payment_failed ────────────────────────────────────────────
@@ -316,7 +399,10 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   const db = await getDb();
   if (!db) return;
 
-  await db.update(payments).set({
-    status: "failed",
-  }).where(eq(payments.stripePaymentIntentId, paymentIntent.id));
+  await db
+    .update(payments)
+    .set({
+      status: "failed",
+    })
+    .where(eq(payments.stripePaymentIntentId, paymentIntent.id));
 }

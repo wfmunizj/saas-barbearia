@@ -15,5 +15,6 @@
       "src": "/(.*)",
       "dest": "dist/index.js"
     }
-  ]
+  ],
+  "installCommand": "corepack enable && corepack prepare pnpm@10.4.1 --activate && pnpm install"
 }

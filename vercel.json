@@ -1,14 +1,15 @@
 {
   "version": 2,
-  "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
-  "functions": {
-    "dist/index.js": {
-      "runtime": "nodejs20.x",
-      "memory": 1024,
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "dist/index.js",
+      "use": "@vercel/node@3.x.x",
+      "config": {
+        "maxLambdaSize": "50mb",
+        "nodeVersion": "20.x"
+      }
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",

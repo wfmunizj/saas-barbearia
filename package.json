@@ -74,7 +74,6 @@
     "sonner": "^2.0.7",
     "streamdown": "^1.4.0",
     "stripe": "^19.3.1",
-    "supabase": "^2.76.15",
     "supabase-js": "0.0.1-security",
     "superjson": "^1.13.3",
     "tailwind-merge": "^3.3.1",
@@ -84,6 +83,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "supabase": "^2.76.15",
     "@builder.io/vite-plugin-jsx-loc": "^0.1.1",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.3",

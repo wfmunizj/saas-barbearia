@@ -1,10 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "pnpm build",
   "builds": [
     {
-      "src": "dist/index.js",
-      "use": "@vercel/node"
+      "src": "package.json",
+      "use": "@vercel/node",
+      "config": {
+        "buildCommand": "pnpm build",
+        "outputDirectory": "dist"
+      }
     }
   ],
   "routes": [

@@ -196,9 +196,6 @@ importers:
       stripe:
         specifier: ^19.3.1
         version: 19.3.1(@types/node@24.7.0)
-      supabase:
-        specifier: ^2.76.15
-        version: 2.76.15
       supabase-js:
         specifier: 0.0.1-security
         version: 0.0.1-security
@@ -272,6 +269,9 @@ importers:
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
+      supabase:
+        specifier: ^2.76.15
+        version: 2.76.15
       tailwindcss:
         specifier: ^4.1.14
         version: 4.1.14

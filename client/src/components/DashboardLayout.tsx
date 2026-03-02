@@ -42,16 +42,36 @@ import { Button } from "./ui/button";
 
 // Itens com campo `roles`: quais roles podem ver. undefined = todos.
 const allMenuItems = [
-  { icon: LayoutDashboard, label: "Dashboard",     path: "/",            roles: undefined },
-  { icon: Calendar,        label: "Agendamentos",  path: "/appointments",roles: undefined },
-  { icon: Users,           label: "Clientes",      path: "/clients",     roles: ["owner"] },
-  { icon: Scissors,        label: "Barbeiros",     path: "/barbers",     roles: ["owner"] },
-  { icon: Tag,             label: "Serviços",      path: "/services",    roles: ["owner"] },
-  { icon: CreditCard,      label: "Pagamentos",    path: "/payments",    roles: undefined },
-  { icon: BarChart3,       label: "Relatórios",    path: "/reports",     roles: ["owner"] },
-  { icon: MessageSquare,   label: "Marketing",     path: "/marketing",   roles: ["owner"] },
-  { icon: Star,            label: "Planos",        path: "/plans",       roles: ["owner"] },
-  { icon: Users2,           label: "Acesso da Equipe", path: "/team-access", roles: ["owner"] },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/", roles: undefined },
+  {
+    icon: Calendar,
+    label: "Agendamentos",
+    path: "/appointments",
+    roles: undefined,
+  },
+  { icon: Users, label: "Clientes", path: "/clients", roles: ["owner"] },
+  { icon: Scissors, label: "Barbeiros", path: "/barbers", roles: ["owner"] },
+  { icon: Tag, label: "Serviços", path: "/services", roles: ["owner"] },
+  {
+    icon: CreditCard,
+    label: "Pagamentos",
+    path: "/payments",
+    roles: undefined,
+  },
+  { icon: BarChart3, label: "Relatórios", path: "/reports", roles: ["owner"] },
+  {
+    icon: MessageSquare,
+    label: "Marketing",
+    path: "/marketing",
+    roles: ["owner"],
+  },
+  { icon: Star, label: "Planos", path: "/plans", roles: ["owner"] },
+  {
+    icon: Users2,
+    label: "Acesso da Equipe",
+    path: "/team-access",
+    roles: ["owner"],
+  },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -156,10 +176,10 @@ function DashboardLayoutContent({
   // Filtra o menu baseado no role do usuário
   const role = (user as any)?.role ?? "barber";
   const menuItems = allMenuItems.filter(
-    (item) => !item.roles || item.roles.includes(role)
+    item => !item.roles || item.roles.includes(role)
   );
 
-  const activeMenuItem = menuItems.find((item) => item.path === location);
+  const activeMenuItem = menuItems.find(item => item.path === location);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -170,8 +190,7 @@ function DashboardLayoutContent({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft =
-        sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = Math.min(
         Math.max(e.clientX - sidebarLeft, MIN_WIDTH),
         MAX_WIDTH
@@ -220,7 +239,7 @@ function DashboardLayoutContent({
                       alt="Logo"
                     />
                     <span className="font-semibold tracking-tight truncate">
-                      {APP_TITLE}
+                      {(user as any)?.barbershop?.name || APP_TITLE}
                     </span>
                   </div>
                   <button
@@ -236,7 +255,7 @@ function DashboardLayoutContent({
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map((item) => {
+              {menuItems.map(item => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
@@ -261,11 +280,13 @@ function DashboardLayoutContent({
             {/* Badge de role */}
             {!isCollapsed && (
               <div className="px-1 pb-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  role === "owner"
-                    ? "bg-primary/10 text-primary"
-                    : "bg-muted text-muted-foreground"
-                }`}>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    role === "owner"
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
                   {role === "owner" ? "Proprietário" : "Barbeiro"}
                 </span>
               </div>
@@ -320,7 +341,9 @@ function DashboardLayoutContent({
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
               <div className="flex items-center gap-2">
                 <span className="tracking-tight text-foreground">
-                  {activeMenuItem?.label ?? APP_TITLE}
+                  {activeMenuItem?.label ??
+                    (user as any)?.barbershop?.name ??
+                    APP_TITLE}
                 </span>
               </div>
             </div>

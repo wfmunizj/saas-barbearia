@@ -50,7 +50,7 @@ export default function Login() {
               <Scissors className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">SaaS Barbearia</h1>
+          <h1 className="text-2xl font-bold tracking-tight">BarberFlow</h1>
           <p className="text-muted-foreground text-sm">Entre na sua conta para continuar</p>
         </div>
 

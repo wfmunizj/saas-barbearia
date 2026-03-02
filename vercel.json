@@ -2,12 +2,8 @@
   "version": 2,
   "builds": [
     {
-      "src": "package.json",
-      "use": "@vercel/node",
-      "config": {
-        "buildCommand": "pnpm build",
-        "outputDirectory": "dist"
-      }
+      "src": "dist/index.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -15,6 +11,5 @@
       "src": "/(.*)",
       "dest": "dist/index.js"
     }
-  ],
-  "installCommand": "corepack enable && corepack prepare pnpm@10.4.1 --activate && pnpm install"
+  ]
 }

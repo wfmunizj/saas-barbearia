@@ -3,7 +3,12 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CalendarIcon, Star, LogOut, Loader2, AlertCircle } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { ArrowLeft, CalendarIcon, Star, LogOut, Loader2, AlertCircle, XCircle, Infinity } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export default function ClientAccountPage() {
@@ -13,7 +18,26 @@ export default function ClientAccountPage() {
   const utils = trpc.useUtils();
   const { data: me, isLoading } = trpc.client.me.useQuery({ slug });
 
-  const cancelMutation = trpc.client.cancelSubscription.useMutation({
+  // Cancelamento de agendamento
+  const [cancelDialog, setCancelDialog] = useState<{ open: boolean; appointmentId: number | null }>({
+    open: false, appointmentId: null,
+  });
+  const [cancelReason, setCancelReason] = useState("");
+
+  const cancelAppointmentMutation = trpc.client.cancelAppointment.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.creditsRefunded
+        ? "Agendamento cancelado. Seu crédito foi devolvido!"
+        : "Agendamento cancelado."
+      );
+      utils.client.me.invalidate();
+      setCancelDialog({ open: false, appointmentId: null });
+      setCancelReason("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const cancelSubscriptionMutation = trpc.client.cancelSubscription.useMutation({
     onSuccess: () => {
       toast.success("Assinatura cancelada.");
       utils.client.me.invalidate();
@@ -42,7 +66,8 @@ export default function ClientAccountPage() {
 
   const { user, subscription, upcomingAppointments } = me;
   const sub = subscription?.subscription;
-  const plan = subscription?.plan;
+  const plan = subscription?.plan as any;
+  const isUnlimited = plan?.isUnlimited ?? false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -56,8 +81,7 @@ export default function ClientAccountPage() {
             <h1 className="font-bold">Minha Conta</h1>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground">
-            <LogOut className="h-4 w-4 mr-2" />
-            Sair
+            <LogOut className="h-4 w-4 mr-2" />Sair
           </Button>
         </div>
       </header>
@@ -86,10 +110,15 @@ export default function ClientAccountPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Créditos disponíveis</span>
+                  <span className="text-sm text-muted-foreground">
+                    {isUnlimited ? "Agendamentos" : "Créditos disponíveis"}
+                  </span>
                   <div className="flex items-center gap-1 font-bold">
-                    <Star className="h-4 w-4 text-yellow-500" />
-                    <span>{sub.creditsRemaining} de {plan.creditsPerMonth}</span>
+                    {isUnlimited ? (
+                      <><Infinity className="h-4 w-4 text-blue-500" /><span>Ilimitado</span></>
+                    ) : (
+                      <><Star className="h-4 w-4 text-yellow-500" /><span>{sub.creditsRemaining} de {plan.creditsPerMonth}</span></>
+                    )}
                   </div>
                 </div>
 
@@ -102,23 +131,15 @@ export default function ClientAccountPage() {
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Valor mensal</span>
-                  <span className="font-semibold">
-                    R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}
-                  </span>
+                  <span className="font-semibold">R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}</span>
                 </div>
 
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full text-destructive hover:text-destructive"
-                  onClick={() => {
-                    if (confirm("Tem certeza que quer cancelar a assinatura?")) {
-                      cancelMutation.mutate({ slug });
-                    }
-                  }}
-                  disabled={cancelMutation.isPending}
+                  variant="outline" size="sm" className="w-full text-destructive hover:text-destructive"
+                  onClick={() => { if (confirm("Tem certeza que quer cancelar a assinatura?")) cancelSubscriptionMutation.mutate({ slug }); }}
+                  disabled={cancelSubscriptionMutation.isPending}
                 >
-                  {cancelMutation.isPending ? "Cancelando..." : "Cancelar Assinatura"}
+                  {cancelSubscriptionMutation.isPending ? "Cancelando..." : "Cancelar Assinatura"}
                 </Button>
               </CardContent>
             </Card>
@@ -146,21 +167,34 @@ export default function ClientAccountPage() {
           {upcomingAppointments && upcomingAppointments.length > 0 ? (
             upcomingAppointments.map(appt => (
               <Card key={appt.id}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CalendarIcon className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-semibold">{appt.serviceName}</p>
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <CalendarIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{appt.serviceName}</p>
                       <p className="text-sm text-muted-foreground">
                         com {appt.barberName} · {new Date(appt.appointmentDate).toLocaleDateString("pt-BR", {
                           weekday: "short", day: "numeric", month: "short"
-                        })} às {new Date(appt.appointmentDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        })} às {new Date(appt.appointmentDate).toLocaleTimeString("pt-BR", {
+                          hour: "2-digit", minute: "2-digit"
+                        })}
                       </p>
                     </div>
                   </div>
-                  <Badge variant={appt.status === "confirmed" ? "default" : "secondary"}>
-                    {appt.status === "confirmed" ? "Confirmado" : "Pendente"}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={appt.status === "confirmed" ? "default" : "secondary"} className="text-xs">
+                      {appt.status === "confirmed" ? "Confirmado" : "Pendente"}
+                    </Badge>
+                    {(appt.status === "confirmed" || appt.status === "pending") && (
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
+                        title="Cancelar agendamento"
+                        onClick={() => setCancelDialog({ open: true, appointmentId: appt.id })}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))
@@ -173,6 +207,50 @@ export default function ClientAccountPage() {
           )}
         </section>
       </main>
+
+      {/* Dialog de cancelamento de agendamento */}
+      <Dialog open={cancelDialog.open} onOpenChange={open => {
+        if (!open) { setCancelDialog({ open: false, appointmentId: null }); setCancelReason(""); }
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="h-5 w-5" />
+              Cancelar Agendamento
+            </DialogTitle>
+            <DialogDescription>
+              Se você não puder comparecer, cancele com antecedência. Seu crédito será devolvido automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Textarea
+              placeholder="Motivo do cancelamento (opcional)"
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCancelDialog({ open: false, appointmentId: null })}>
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={cancelAppointmentMutation.isPending}
+              onClick={() => {
+                if (!cancelDialog.appointmentId) return;
+                cancelAppointmentMutation.mutate({
+                  slug,
+                  appointmentId: cancelDialog.appointmentId,
+                  reason: cancelReason || undefined,
+                });
+              }}
+            >
+              {cancelAppointmentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar Cancelamento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

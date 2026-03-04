@@ -2,9 +2,14 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Check, Clock, User, Scissors, CalendarIcon, Loader2 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Check, Clock, User, Scissors, CalendarIcon, Loader2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 type Step = "barber" | "service" | "date" | "time" | "confirm";
@@ -21,6 +26,11 @@ export default function BookingPage() {
   const [notes, setNotes] = useState("");
   const [isBooking, setIsBooking] = useState(false);
 
+  // ── Exceção pai/filho ──────────────────────────────────────────────────────
+  const [showGuestDialog, setShowGuestDialog] = useState(false);
+  const [isGuestBooking, setIsGuestBooking] = useState(false);
+  const [guestName, setGuestName] = useState("");
+
   const { data: me } = trpc.client.me.useQuery({ slug });
   const { data: barbers_ } = trpc.client.getBarbers.useQuery({ slug });
   const { data: services_ } = trpc.client.getServices.useQuery({ slug });
@@ -30,8 +40,12 @@ export default function BookingPage() {
   );
 
   const bookMutation = trpc.client.bookAppointment.useMutation({
-    onSuccess: (data) => {
-      toast.success("Agendamento confirmado!");
+    onSuccess: () => {
+      if (isGuestBooking) {
+        toast.success(`Agendamento confirmado para ${guestName}! Seus créditos não foram debitados.`);
+      } else {
+        toast.success("Agendamento confirmado!");
+      }
       navigate(`/b/${slug}/minha-conta`);
     },
     onError: (err) => {
@@ -69,28 +83,62 @@ export default function BookingPage() {
 
   const currentStepIndex = steps.findIndex(s => s.key === step);
 
-  const handleBook = async () => {
+  // Dias permitidos pelo plano do cliente (null = todos os dias)
+  const allowedDaysOfWeek: number[] | null = (() => {
+    const raw = (me?.subscription?.plan as any)?.allowedDaysOfWeek;
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  })();
+
+  const isUnlimitedPlan = (me?.subscription?.plan as any)?.isUnlimited ?? false;
+
+  // Gera próximos 30 dias filtrando por dias permitidos e sem domingo
+  const availableDates = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i + 1);
+    const dow = d.getDay();
+    if (dow === 0) return null; // remove domingo
+    if (allowedDaysOfWeek && !allowedDaysOfWeek.includes(dow)) return null; // plano restringe dias
+    return d.toISOString().split("T")[0];
+  }).filter(Boolean) as string[];
+
+  // Inicia o booking — se tiver assinatura ativa, mostra popup de guest
+  const handleConfirmClick = () => {
+    if (me?.subscription && !showGuestDialog) {
+      setShowGuestDialog(true);
+      return;
+    }
+    executeBooking();
+  };
+
+  const executeBooking = () => {
     if (!selectedBarber || !selectedService || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
-    const hasCredits = (me?.subscription?.subscription?.creditsRemaining ?? 0) > 0;
+    const hasSubscription = !!me?.subscription;
     bookMutation.mutate({
       slug,
       barberId: selectedBarber.id,
       serviceId: selectedService.id,
       appointmentDate,
       notes: notes || undefined,
-      useSubscriptionCredit: hasCredits,
+      useSubscriptionCredit: hasSubscription && !isGuestBooking,
+      isGuestBooking,
+      guestName: isGuestBooking ? guestName : undefined,
     });
   };
 
-  // Gera próximos 14 dias úteis
-  const availableDates = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i + 1);
-    if (d.getDay() === 0) return null; // Remove domingo
-    return d.toISOString().split("T")[0];
-  }).filter(Boolean) as string[];
+  const handleGuestDialogConfirm = (forGuest: boolean) => {
+    setIsGuestBooking(forGuest);
+    if (forGuest && !guestName.trim()) {
+      // aguarda nome ser preenchido
+      return;
+    }
+    setShowGuestDialog(false);
+    executeBooking();
+  };
+
+  const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -119,6 +167,11 @@ export default function BookingPage() {
           <p className="text-xs text-muted-foreground mt-2">
             Passo {currentStepIndex + 1} de {steps.length}: <span className="font-medium">{steps[currentStepIndex].label}</span>
           </p>
+          {allowedDaysOfWeek && (
+            <p className="text-xs text-amber-600 mt-1">
+              Seu plano permite agendamentos apenas de Terça a Quinta.
+            </p>
+          )}
         </div>
       </div>
 
@@ -200,6 +253,12 @@ export default function BookingPage() {
         {step === "date" && (
           <div className="space-y-3">
             <h2 className="text-xl font-bold">Escolha a data</h2>
+            {availableDates.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarIcon className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p>Nenhuma data disponível para seu plano nos próximos 30 dias.</p>
+              </div>
+            )}
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {availableDates.map(date => {
                 const d = new Date(date + "T12:00:00");
@@ -289,15 +348,31 @@ export default function BookingPage() {
                   </div>
                 </div>
 
-                {me?.subscription && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
-                    ✅ Será usado 1 crédito do seu plano ({me.subscription.subscription.creditsRemaining} disponíveis)
+                {me?.subscription && !isGuestBooking && (
+                  <div className={`rounded-lg p-3 text-sm ${
+                    isUnlimitedPlan
+                      ? "bg-green-50 border border-green-200 text-green-700"
+                      : creditsRemaining > 0
+                      ? "bg-green-50 border border-green-200 text-green-700"
+                      : "bg-red-50 border border-red-200 text-red-700"
+                  }`}>
+                    {isUnlimitedPlan
+                      ? "✅ Plano ilimitado — sem débito de créditos"
+                      : creditsRemaining > 0
+                      ? `✅ Será usado 1 crédito do seu plano (${creditsRemaining} disponíveis)`
+                      : "❌ Sem créditos disponíveis. Aguarde a renovação mensal."}
+                  </div>
+                )}
+
+                {isGuestBooking && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                    👤 Agendamento para <strong>{guestName}</strong> — seus créditos não serão debitados
                   </div>
                 )}
 
                 {!me?.subscription && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
-                    ⚠️ Sem plano ativo — agendamento ficará pendente até confirmação manual
+                    ⚠️ Sem plano ativo — agendamento ficará pendente até confirmação
                   </div>
                 )}
 
@@ -312,13 +387,86 @@ export default function BookingPage() {
 
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep("time")}>Voltar</Button>
-              <Button className="flex-1" onClick={handleBook} disabled={isBooking}>
+              <Button
+                className="flex-1"
+                onClick={handleConfirmClick}
+                disabled={isBooking || (!isUnlimitedPlan && !!me?.subscription && creditsRemaining <= 0 && !isGuestBooking)}
+              >
                 {isBooking ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Agendando...</> : "Confirmar"}
               </Button>
             </div>
           </div>
         )}
       </main>
+
+      {/* ── Dialog: Agendando para você ou para outra pessoa? ──────────────── */}
+      <Dialog open={showGuestDialog} onOpenChange={open => { if (!open && !isBooking) setShowGuestDialog(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Para quem é este agendamento?
+            </DialogTitle>
+            <DialogDescription>
+              Se for para outra pessoa (ex: seu filho), seus créditos não serão descontados.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {isGuestBooking && (
+              <div className="space-y-2">
+                <Label htmlFor="guestName">Nome de quem vai ao corte</Label>
+                <Input
+                  id="guestName"
+                  placeholder="Ex: João (filho)"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {!isGuestBooking ? (
+              <>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setIsGuestBooking(true);
+                  }}
+                >
+                  Para outra pessoa
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setIsGuestBooking(false);
+                    setShowGuestDialog(false);
+                    executeBooking();
+                  }}
+                >
+                  Para mim
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setIsGuestBooking(false)}>
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={!guestName.trim()}
+                  onClick={() => handleGuestDialogConfirm(true)}
+                >
+                  Confirmar
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

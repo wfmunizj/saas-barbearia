@@ -11,8 +11,11 @@ import {
 } from "./whatsapp";
 import { TRPCError } from "@trpc/server";
 import { clientPortalRouter } from "./clientRouter";
-import { plans, clientUsers, subscriptions } from "../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  plans, clientUsers, subscriptions, barbers, appointments, services,
+  planServices, barberCommissionRecords,
+} from "../drizzle/schema";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import Stripe from "stripe";
 
 // Helper para extrair barbershopId do contexto do usuário autenticado
@@ -261,11 +264,18 @@ export const appRouter = router({
           email: z.string().optional(),
           specialties: z.string().optional(),
           isActive: z.boolean().optional(),
+          commissionPercent: z.number().min(0).max(100).optional(),
+          bonusAmountInCents: z.number().min(0).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
-        const { id, ...data } = input;
+        const { id, commissionPercent, ...rest } = input;
+        // decimal column armazena string no Drizzle
+        const data: any = { ...rest };
+        if (commissionPercent !== undefined) {
+          data.commissionPercent = String(commissionPercent);
+        }
         return db.updateBarber(id, barbershopId, data);
       }),
 
@@ -274,6 +284,79 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
         return db.deleteBarber(input.id, barbershopId);
+      }),
+
+    // Resumo personalizado por barbeiro (agendamentos, receita, comissão)
+    summary: protectedProcedure
+      .input(z.object({
+        barberId: z.number(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        const [barber] = await dbInstance.select().from(barbers)
+          .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershopId)))
+          .limit(1);
+        if (!barber) throw new TRPCError({ code: "NOT_FOUND", message: "Barbeiro não encontrado." });
+
+        const start = input.startDate ? new Date(input.startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const end = input.endDate ? new Date(input.endDate) : new Date();
+
+        // Agendamentos do barbeiro no período
+        const appts = await dbInstance.select({
+          id: appointments.id,
+          status: appointments.status,
+          appointmentDate: appointments.appointmentDate,
+          serviceName: services.name,
+          servicePrice: services.priceInCents,
+        })
+          .from(appointments)
+          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .where(and(
+            eq(appointments.barberId, input.barberId),
+            eq(appointments.barbershopId, barbershopId),
+            gte(appointments.appointmentDate, start),
+            lte(appointments.appointmentDate, end),
+          ));
+
+        const totalAppointments = appts.length;
+        const completedAppointments = appts.filter(a => a.status === "completed").length;
+        const cancelledAppointments = appts.filter(a => a.status === "cancelled").length;
+        const totalRevenueInCents = appts
+          .filter(a => a.status === "completed")
+          .reduce((sum, a) => sum + (a.servicePrice ?? 0), 0);
+
+        const commissionPercent = parseFloat(barber.commissionPercent ?? "0");
+        const commissionAmountInCents = Math.floor(totalRevenueInCents * commissionPercent / 100);
+
+        // Registros de comissão pagos/pendentes
+        const commissionRecords = await dbInstance.select()
+          .from(barberCommissionRecords)
+          .where(and(
+            eq(barberCommissionRecords.barberId, input.barberId),
+            eq(barberCommissionRecords.barbershopId, barbershopId),
+          ));
+
+        const paidCommission = commissionRecords.filter(r => r.paid).reduce((s, r) => s + r.commissionAmountInCents, 0);
+        const pendingCommission = commissionRecords.filter(r => !r.paid).reduce((s, r) => s + r.commissionAmountInCents, 0);
+
+        return {
+          barber,
+          period: { start, end },
+          totalAppointments,
+          completedAppointments,
+          cancelledAppointments,
+          totalRevenueInCents,
+          commissionPercent,
+          commissionAmountInCents,
+          paidCommission,
+          pendingCommission,
+          appointments: appts,
+        };
       }),
   }),
 
@@ -415,6 +498,101 @@ export const appRouter = router({
 
         const { id, ...data } = input;
         return db.updateAppointment(id, barbershopId, data);
+      }),
+
+    // Cancelamento pelo admin com geração de registro de comissão quando concluído
+    completeWithCommission: protectedProcedure
+      .input(z.object({ appointmentId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Busca o agendamento com dados do barbeiro e serviço
+        const [appt] = await dbInstance.select({
+          id: appointments.id,
+          barberId: appointments.barberId,
+          commissionPercent: barbers.commissionPercent,
+          priceInCents: services.priceInCents,
+          status: appointments.status,
+        })
+          .from(appointments)
+          .innerJoin(barbers, eq(appointments.barberId, barbers.id))
+          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .where(and(eq(appointments.id, input.appointmentId), eq(appointments.barbershopId, barbershopId)))
+          .limit(1);
+
+        if (!appt) throw new TRPCError({ code: "NOT_FOUND" });
+        if (appt.status === "completed") throw new TRPCError({ code: "BAD_REQUEST", message: "Agendamento já concluído." });
+
+        // Marca como concluído
+        await dbInstance.update(appointments).set({ status: "completed", updatedAt: new Date() })
+          .where(eq(appointments.id, appt.id));
+
+        // Cria registro de comissão
+        const commissionPct = parseFloat(appt.commissionPercent ?? "0");
+        const commissionAmountInCents = Math.floor((appt.priceInCents ?? 0) * commissionPct / 100);
+
+        await dbInstance.insert(barberCommissionRecords).values({
+          barbershopId,
+          barberId: appt.barberId,
+          appointmentId: appt.id,
+          commissionPercent: String(commissionPct),
+          serviceAmountInCents: appt.priceInCents ?? 0,
+          commissionAmountInCents,
+        }).onConflictDoNothing();
+
+        return { success: true, commissionAmountInCents };
+      }),
+  }),
+
+  // ─── Comissões ─────────────────────────────────────────────────────────────────
+  commissions: router({
+    list: protectedProcedure
+      .input(z.object({
+        barberId: z.number().optional(),
+        paid: z.boolean().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) return [];
+
+        let query = dbInstance.select({
+          id: barberCommissionRecords.id,
+          barberId: barberCommissionRecords.barberId,
+          appointmentId: barberCommissionRecords.appointmentId,
+          commissionPercent: barberCommissionRecords.commissionPercent,
+          serviceAmountInCents: barberCommissionRecords.serviceAmountInCents,
+          commissionAmountInCents: barberCommissionRecords.commissionAmountInCents,
+          paid: barberCommissionRecords.paid,
+          paidAt: barberCommissionRecords.paidAt,
+          createdAt: barberCommissionRecords.createdAt,
+          barberName: barbers.name,
+        })
+          .from(barberCommissionRecords)
+          .innerJoin(barbers, eq(barberCommissionRecords.barberId, barbers.id))
+          .where(eq(barberCommissionRecords.barbershopId, barbershopId)) as any;
+
+        return query;
+      }),
+
+    markAsPaid: protectedProcedure
+      .input(z.object({ ids: z.array(z.number()) }))
+      .mutation(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        for (const id of input.ids) {
+          await dbInstance.update(barberCommissionRecords)
+            .set({ paid: true, paidAt: new Date(), updatedAt: new Date() })
+            .where(and(
+              eq(barberCommissionRecords.id, id),
+              eq(barberCommissionRecords.barbershopId, barbershopId)
+            ));
+        }
+        return { success: true };
       }),
   }),
 
@@ -604,12 +782,17 @@ export const appRouter = router({
           description: z.string().optional(),
           priceInCents: z.number(),
           creditsPerMonth: z.number(),
+          // Novos campos
+          planType: z.enum(["monthly_limited", "unlimited", "single_cut"]).default("monthly_limited"),
+          allowedDaysOfWeek: z.array(z.number().min(0).max(6)).optional(), // [2,3,4] = Ter,Qua,Qui
+          isUnlimited: z.boolean().default(false),
+          serviceIds: z.array(z.number()).optional(), // serviços incluídos no plano
         })
       )
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
-        const db = await import("./db").then(m => m.getDb());
-        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
         // Cria produto e preço no Stripe automaticamente
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -626,15 +809,26 @@ export const appRouter = router({
           recurring: { interval: "month" },
         });
 
-        const [plan] = await db
+        const { serviceIds, allowedDaysOfWeek, ...planData } = input;
+
+        const [plan] = await dbInstance
           .insert(plans)
           .values({
-            ...input,
+            ...planData,
             barbershopId,
             stripePriceId: price.id,
             stripeProductId: product.id,
+            allowedDaysOfWeek: allowedDaysOfWeek ? JSON.stringify(allowedDaysOfWeek) : null,
           })
           .returning();
+
+        // Vincula serviços ao plano
+        if (serviceIds && serviceIds.length > 0) {
+          await dbInstance.insert(planServices).values(
+            serviceIds.map(sid => ({ planId: plan.id, serviceId: sid }))
+          ).onConflictDoNothing();
+        }
+
         return plan;
       }),
 
@@ -645,19 +839,54 @@ export const appRouter = router({
           name: z.string().optional(),
           description: z.string().optional(),
           isActive: z.boolean().optional(),
+          planType: z.enum(["monthly_limited", "unlimited", "single_cut"]).optional(),
+          allowedDaysOfWeek: z.array(z.number().min(0).max(6)).nullable().optional(),
+          isUnlimited: z.boolean().optional(),
+          serviceIds: z.array(z.number()).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
-        const db = await import("./db").then(m => m.getDb());
-        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-        const { id, ...data } = input;
-        const [plan] = await db
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { id, serviceIds, allowedDaysOfWeek, ...data } = input;
+
+        const updateData: any = { ...data, updatedAt: new Date() };
+        if (allowedDaysOfWeek !== undefined) {
+          updateData.allowedDaysOfWeek = allowedDaysOfWeek ? JSON.stringify(allowedDaysOfWeek) : null;
+        }
+
+        const [plan] = await dbInstance
           .update(plans)
-          .set({ ...data, updatedAt: new Date() })
+          .set(updateData)
           .where(and(eq(plans.id, id), eq(plans.barbershopId, barbershopId)))
           .returning();
+
+        // Atualiza serviços vinculados ao plano se fornecido
+        if (serviceIds !== undefined) {
+          await dbInstance.delete(planServices).where(eq(planServices.planId, id));
+          if (serviceIds.length > 0) {
+            await dbInstance.insert(planServices).values(
+              serviceIds.map(sid => ({ planId: id, serviceId: sid }))
+            ).onConflictDoNothing();
+          }
+        }
+
         return plan;
+      }),
+
+    // Serviços de um plano
+    getServices: protectedProcedure
+      .input(z.object({ planId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) return [];
+        return dbInstance.select({ service: services })
+          .from(planServices)
+          .innerJoin(services, eq(planServices.serviceId, services.id))
+          .innerJoin(plans, eq(planServices.planId, plans.id))
+          .where(and(eq(planServices.planId, input.planId), eq(plans.barbershopId, barbershopId)));
       }),
 
     delete: protectedProcedure

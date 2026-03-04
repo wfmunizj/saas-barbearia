@@ -11,6 +11,9 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
+// ─── Tipos de plano do cliente ────────────────────────────────────────────────
+export const planTypeEnum = pgEnum("plan_type_enum", ["monthly_limited", "unlimited", "single_cut"]);
+
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const userRoleEnum = pgEnum("user_role", ["user", "admin", "barber", "owner"]);
@@ -39,6 +42,11 @@ export const barbershops = pgTable("barbershops", {
   whatsappInstanceName: varchar("whatsapp_instance_name", { length: 255 }),
   whatsappApiUrl: text("whatsapp_api_url"),
   whatsappApiKey: text("whatsapp_api_key"),
+  // Tema da barbearia (cores personalizadas)
+  primaryColor: varchar("primary_color", { length: 7 }).default("#000000"),
+  secondaryColor: varchar("secondary_color", { length: 7 }).default("#FFFFFF"),
+  // Dono da barbearia (para múltiplas barbearias por owner) — sem FK no schema para evitar circular ref
+  ownerId: integer("owner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -96,6 +104,9 @@ export const barbers = pgTable("barbers", {
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 320 }),
   specialties: text("specialties"),
+  // Comissão personalizada por barbeiro
+  commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).default("0.00"),
+  bonusAmountInCents: integer("bonus_amount_in_cents").default(0),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -149,6 +160,13 @@ export const appointments = pgTable("appointments", {
   appointmentDate: timestamp("appointment_date").notNull(),
   status: appointmentStatusEnum("status").default("pending").notNull(),
   notes: text("notes"),
+  // Exceção pai/filho: agendamento em nome de outra pessoa (não debita crédito)
+  isGuestBooking: boolean("is_guest_booking").default(false),
+  guestName: varchar("guest_name", { length: 255 }),
+  // Cancelamento
+  cancellationReason: text("cancellation_reason"),
+  creditRefunded: boolean("credit_refunded").default(false),
+  cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -275,9 +293,15 @@ export const plans = pgTable("plans", {
   name: varchar("name", { length: 255 }).notNull(),           // "Plano Mensal Básico"
   description: text("description"),
   priceInCents: integer("price_in_cents").notNull(),           // 12000 = R$120,00
-  creditsPerMonth: integer("credits_per_month").notNull(),     // qtd de agendamentos incluídos
+  creditsPerMonth: integer("credits_per_month").notNull(),     // qtd de agendamentos incluídos (0 = ilimitado)
   stripePriceId: varchar("stripe_price_id", { length: 255 }), // price_xxx do Stripe
   stripeProductId: varchar("stripe_product_id", { length: 255 }),
+  // Tipo de plano: monthly_limited (créditos), unlimited (sem limite), single_cut (avulso)
+  planType: varchar("plan_type", { length: 30 }).default("monthly_limited"),
+  // Dias da semana permitidos (JSON array, ex: [2,3,4] = Ter-Qua-Qui). null = todos os dias
+  allowedDaysOfWeek: text("allowed_days_of_week"),
+  // Se true, ignora contagem de créditos (plano ilimitado)
+  isUnlimited: boolean("is_unlimited").default(false),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -328,3 +352,38 @@ export const subscriptions = pgTable("subscriptions", {
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = typeof subscriptions.$inferInsert;
+
+// ─── Plano → Serviços incluídos (Bronze/Prata/Ouro) ──────────────────────────
+
+export const planServices = pgTable("plan_services", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id").notNull().references(() => plans.id, { onDelete: "cascade" }),
+  serviceId: integer("service_id").notNull().references(() => services.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePlanService: unique("plan_services_unique").on(table.planId, table.serviceId),
+}));
+
+export type PlanService = typeof planServices.$inferSelect;
+export type InsertPlanService = typeof planServices.$inferInsert;
+
+// ─── Registros de Comissão por Agendamento ────────────────────────────────────
+
+export const barberCommissionRecords = pgTable("barber_commission_records", {
+  id: serial("id").primaryKey(),
+  barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
+  barberId: integer("barber_id").notNull().references(() => barbers.id, { onDelete: "cascade" }),
+  appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).notNull().default("0.00"),
+  serviceAmountInCents: integer("service_amount_in_cents").notNull().default(0),
+  commissionAmountInCents: integer("commission_amount_in_cents").notNull().default(0),
+  paid: boolean("paid").default(false),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAppointmentCommission: unique("barber_commission_records_appointment_unique").on(table.appointmentId),
+}));
+
+export type BarberCommissionRecord = typeof barberCommissionRecords.$inferSelect;
+export type InsertBarberCommissionRecord = typeof barberCommissionRecords.$inferInsert;

@@ -11,6 +11,7 @@ import { getDb } from "./db";
 import {
   barbershops, plans, clientUsers, subscriptions,
   appointments, clients, barbers, services,
+  barberCommissionRecords,
 } from "../drizzle/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
@@ -202,6 +203,9 @@ export const clientPortalRouter = router({
       appointmentDate: z.union([z.string(), z.date()]).transform(v => new Date(v)),
       notes: z.string().optional(),
       useSubscriptionCredit: z.boolean().default(true),
+      // Exceção pai/filho: agendamento em nome de outra pessoa
+      isGuestBooking: z.boolean().default(false),
+      guestName: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const clientUser = await getClientUser((ctx as any).req);
@@ -212,19 +216,65 @@ export const clientPortalRouter = router({
         .from(barbershops).where(eq(barbershops.slug, input.slug)).limit(1);
       if (!barbershop) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Verifica créditos se for usar assinatura
-      if (input.useSubscriptionCredit) {
-        const [sub] = await db.select().from(subscriptions).where(
-          and(
-            eq(subscriptions.clientUserId, clientUser.id),
-            eq(subscriptions.status, "active")
-          )
-        ).limit(1);
+      // Validação: guest booking requer nome do convidado
+      if (input.isGuestBooking && !input.guestName?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Informe o nome da pessoa para quem está agendando.",
+        });
+      }
 
-        if (!sub || sub.creditsRemaining <= 0) {
+      // Busca serviço para calcular comissão depois
+      const [service] = await db.select({ priceInCents: services.priceInCents })
+        .from(services).where(eq(services.id, input.serviceId)).limit(1);
+
+      // ── Agendamento com crédito de assinatura ─────────────────────────────
+      if (input.useSubscriptionCredit && !input.isGuestBooking) {
+        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId })
+          .from(subscriptions).where(
+            and(
+              eq(subscriptions.clientUserId, clientUser.id),
+              eq(subscriptions.status, "active")
+            )
+          ).limit(1);
+
+        if (!sub) {
           throw new TRPCError({
             code: "FORBIDDEN",
-            message: "Sem créditos disponíveis. Assine um plano ou aguarde a renovação mensal.",
+            message: "Sem assinatura ativa. Assine um plano para continuar.",
+          });
+        }
+
+        // Busca plano para verificar se é ilimitado e dias permitidos
+        const [plan] = await db.select({
+          isUnlimited: plans.isUnlimited,
+          creditsRemaining: subscriptions.creditsRemaining,
+          allowedDaysOfWeek: plans.allowedDaysOfWeek,
+        })
+          .from(plans)
+          .innerJoin(subscriptions, eq(subscriptions.planId, plans.id))
+          .where(eq(subscriptions.id, sub.id))
+          .limit(1);
+
+        // Verificação de dias permitidos
+        if (plan?.allowedDaysOfWeek) {
+          const allowed: number[] = JSON.parse(plan.allowedDaysOfWeek);
+          const dayOfWeek = input.appointmentDate.getDay(); // 0=Dom, 1=Seg...
+          if (!allowed.includes(dayOfWeek)) {
+            const dayNames = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+            const allowedNames = allowed.map(d => dayNames[d]).join(", ");
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: `Seu plano permite agendamentos apenas em: ${allowedNames}.`,
+            });
+          }
+        }
+
+        // Verificação de créditos (somente planos não-ilimitados)
+        if (!plan?.isUnlimited && sub.creditsRemaining <= 0) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Sem créditos disponíveis. Aguarde a renovação mensal ou assine um plano ilimitado.",
           });
         }
 
@@ -237,17 +287,45 @@ export const clientPortalRouter = router({
           appointmentDate: input.appointmentDate,
           notes: input.notes,
           status: "confirmed",
+          isGuestBooking: false,
         }).returning();
 
-        // Debita 1 crédito
-        await db.update(subscriptions)
-          .set({ creditsRemaining: sub.creditsRemaining - 1, updatedAt: new Date() })
-          .where(eq(subscriptions.id, sub.id));
+        // Debita 1 crédito apenas se plano não for ilimitado
+        const newCredits = plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1;
+        if (!plan?.isUnlimited) {
+          await db.update(subscriptions)
+            .set({ creditsRemaining: newCredits, updatedAt: new Date() })
+            .where(eq(subscriptions.id, sub.id));
+        }
 
-        return { appointment, creditsRemaining: sub.creditsRemaining - 1 };
+        return { appointment, creditsRemaining: newCredits };
       }
 
-      // Sem crédito (agendamento avulso — status pending até pagamento)
+      // ── Agendamento em nome de outra pessoa (pai → filho) ─────────────────
+      // NÃO debita crédito do titular
+      if (input.isGuestBooking) {
+        const [appointment] = await db.insert(appointments).values({
+          barbershopId: barbershop.id,
+          clientId: clientUser.clientId!,
+          barberId: input.barberId,
+          serviceId: input.serviceId,
+          appointmentDate: input.appointmentDate,
+          notes: input.notes ? `[Para: ${input.guestName}] ${input.notes}` : `Agendamento para: ${input.guestName}`,
+          status: "confirmed",
+          isGuestBooking: true,
+          guestName: input.guestName,
+        }).returning();
+
+        // Busca créditos atuais para retornar no response
+        const [sub] = await db.select({ creditsRemaining: subscriptions.creditsRemaining })
+          .from(subscriptions).where(
+            and(eq(subscriptions.clientUserId, clientUser.id), eq(subscriptions.status, "active"))
+          ).limit(1);
+
+        return { appointment, creditsRemaining: sub?.creditsRemaining ?? 0 };
+      }
+
+      // ── Agendamento avulso (sem assinatura — status pending até pagamento) ─
       const [appointment] = await db.insert(appointments).values({
         barbershopId: barbershop.id,
         clientId: clientUser.clientId!,
@@ -256,6 +334,7 @@ export const clientPortalRouter = router({
         appointmentDate: input.appointmentDate,
         notes: input.notes,
         status: "pending",
+        isGuestBooking: false,
       }).returning();
 
       return { appointment, creditsRemaining: 0 };
@@ -314,6 +393,82 @@ export const clientPortalRouter = router({
       });
 
       return { checkoutUrl: session.url };
+    }),
+
+  // Cancelar agendamento (com devolução de crédito se aplicável)
+  cancelAppointment: publicProcedure
+    .input(z.object({
+      slug: z.string(),
+      appointmentId: z.number(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const clientUser = await getClientUser((ctx as any).req);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      // Busca o agendamento garantindo que pertence ao cliente
+      const [appt] = await db.select({
+        id: appointments.id,
+        status: appointments.status,
+        isGuestBooking: appointments.isGuestBooking,
+        creditRefunded: appointments.creditRefunded,
+        appointmentDate: appointments.appointmentDate,
+        clientId: appointments.clientId,
+      })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.id, input.appointmentId),
+            eq(appointments.clientId, clientUser.clientId!)
+          )
+        )
+        .limit(1);
+
+      if (!appt) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado." });
+
+      if (appt.status === "cancelled") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este agendamento já foi cancelado." });
+      }
+
+      if (appt.status === "completed") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível cancelar um agendamento já concluído." });
+      }
+
+      // Marca como cancelado
+      await db.update(appointments).set({
+        status: "cancelled",
+        cancellationReason: input.reason ?? null,
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(appointments.id, appt.id));
+
+      // Devolve crédito se: agendamento não era guest, tinha status confirmed, e ainda não foi devolvido
+      let creditsRefunded = false;
+      if (!appt.isGuestBooking && appt.status === "confirmed" && !appt.creditRefunded) {
+        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId })
+          .from(subscriptions)
+          .where(and(eq(subscriptions.clientUserId, clientUser.id), eq(subscriptions.status, "active")))
+          .limit(1);
+
+        if (sub) {
+          // Verifica se o plano é ilimitado (não precisa devolver crédito)
+          const [plan] = await db.select({ isUnlimited: plans.isUnlimited, creditsPerMonth: plans.creditsPerMonth })
+            .from(plans).where(eq(plans.id, sub.planId)).limit(1);
+
+          if (plan && !plan.isUnlimited) {
+            await db.update(subscriptions)
+              .set({ creditsRemaining: sub.creditsRemaining + 1, updatedAt: new Date() })
+              .where(eq(subscriptions.id, sub.id));
+            await db.update(appointments)
+              .set({ creditRefunded: true })
+              .where(eq(appointments.id, appt.id));
+            creditsRefunded = true;
+          }
+        }
+      }
+
+      return { success: true, creditsRefunded };
     }),
 
   // Cancelar assinatura

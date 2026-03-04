@@ -79,6 +79,36 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         );
         break;
 
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+        // Verifica se é assinatura SaaS ou de cliente da barbearia
+        const subMeta =
+          (event.data.object as Stripe.Subscription).metadata ?? {};
+        if (subMeta.barbershopId && subMeta.saasPlanId) {
+          await handleSaasSubscriptionUpsert(
+            event.data.object as Stripe.Subscription
+          );
+        } else {
+          await handleSubscriptionUpsert(
+            event.data.object as Stripe.Subscription
+          ); // sua função existente
+        }
+        break;
+
+      case "customer.subscription.deleted":
+        const delMeta =
+          (event.data.object as Stripe.Subscription).metadata ?? {};
+        if (delMeta.barbershopId && delMeta.saasPlanId) {
+          await handleSaasSubscriptionDeleted(
+            event.data.object as Stripe.Subscription
+          );
+        } else {
+          await handleSubscriptionDeleted(
+            event.data.object as Stripe.Subscription
+          ); // sua função existente
+        }
+        break;
+
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
@@ -405,4 +435,58 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
       status: "failed",
     })
     .where(eq(payments.stripePaymentIntentId, paymentIntent.id));
+}
+
+// ─── SaaS: customer.subscription.created / updated ────────────────────────────
+async function handleSaasSubscriptionUpsert(stripeSub: Stripe.Subscription) {
+  const metadata = stripeSub.metadata ?? {};
+  const barbershopId = metadata.barbershopId ? parseInt(metadata.barbershopId) : null;
+  const saasPlanId = metadata.saasPlanId ? parseInt(metadata.saasPlanId) : null;
+  if (!barbershopId || !saasPlanId) return;
+
+  const db = await getDb();
+  if (!db) return;
+
+  const statusMap: Record<string, string> = {
+    active: "active",
+    trialing: "trialing",
+    past_due: "past_due",
+    canceled: "cancelled",
+    incomplete: "past_due",
+    incomplete_expired: "expired",
+  };
+  const status = statusMap[stripeSub.status] ?? "cancelled";
+
+  const periodStart = (stripeSub as any).current_period_start;
+  const periodEnd = (stripeSub as any).current_period_end;
+  const startStr = periodStart ? "'" + new Date(periodStart * 1000).toISOString() + "'" : "NULL";
+  const endStr = periodEnd ? "'" + new Date(periodEnd * 1000).toISOString() + "'" : "NULL";
+
+  await db.execute(
+    ("UPDATE saas_subscriptions SET " +
+    "saas_plan_id = " + saasPlanId + ", " +
+    "stripe_subscription_id = '" + stripeSub.id + "', " +
+    "stripe_customer_id = '" + (stripeSub.customer as string) + "', " +
+    "status = '" + status + "', " +
+    "current_period_start = " + startStr + ", " +
+    "current_period_end = " + endStr + ", " +
+    "updated_at = NOW() " +
+    "WHERE barbershop_id = " + barbershopId) as any
+  );
+
+  console.log("[SaasWebhook] Subscription upserted — barbershop:", barbershopId, "status:", status);
+}
+
+// ─── SaaS: customer.subscription.deleted ─────────────────────────────────────
+async function handleSaasSubscriptionDeleted(stripeSub: Stripe.Subscription) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(
+    ("UPDATE saas_subscriptions SET " +
+    "status = 'cancelled', cancelled_at = NOW(), updated_at = NOW() " +
+    "WHERE stripe_subscription_id = '" + stripeSub.id + "'") as any
+  );
+
+  console.log("[SaasWebhook] Subscription cancelled:", stripeSub.id);
 }

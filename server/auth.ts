@@ -129,6 +129,38 @@ export async function registerBarbershop(req: Request, res: Response) {
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
+    // ─── Inicia trial automático de 7 dias ───────────────────────────────────────
+    try {
+      const trialResult = await db.execute(
+        "SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1" as any
+      );
+      // postgres-js retorna array direto, sem .rows
+      const trialPlan =
+        (Array.isArray(trialResult)
+          ? trialResult[0]
+          : (trialResult as any)[0]) ?? null;
+
+      if (trialPlan) {
+        const trialEndsAt = new Date();
+        trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+        await db.execute(
+          ("INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at) VALUES (" +
+            barbershop.id +
+            ", " +
+            trialPlan.id +
+            ", 'trialing', '" +
+            trialEndsAt.toISOString() +
+            "')") as any
+        );
+        console.log(
+          "[Auth] Trial de 7 dias iniciado para barbearia:",
+          barbershop.id
+        );
+      }
+    } catch (err) {
+      console.error("[Auth] Falha ao iniciar trial:", err);
+    }
+
     return res.json({
       success: true,
       user: {
@@ -221,11 +253,11 @@ export async function loginWithEmail(req: Request, res: Response) {
       barbershop,
     });
   } catch (error) {
-  console.error("[Auth] Login error FULL:", JSON.stringify(error, null, 2));
-  console.error("[Auth] Login error message:", (error as any)?.message);
-  console.error("[Auth] Login error stack:", (error as any)?.stack);
-  return res.status(500).json({ error: "Erro interno ao fazer login" });
-}
+    console.error("[Auth] Login error FULL:", JSON.stringify(error, null, 2));
+    console.error("[Auth] Login error message:", (error as any)?.message);
+    console.error("[Auth] Login error stack:", (error as any)?.stack);
+    return res.status(500).json({ error: "Erro interno ao fazer login" });
+  }
 }
 
 // ─── Get current user (via session) ──────────────────────────────────────────

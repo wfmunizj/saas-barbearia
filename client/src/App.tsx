@@ -25,7 +25,55 @@ import BookingPage from "./pages/portal/BookingPage";
 import ClientAccountPage from "./pages/portal/ClientAccountPage";
 import { ClientLoginPage, ClientRegisterPage } from "./pages/portal/ClientAuthPages";
 import SubscribePage from "./pages/portal/Subscribepage";
+import Subscription from "./pages/Subscription";
 
+
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+
+// Rotas que não precisam de assinatura ativa
+const PUBLIC_ROUTES = ["/login", "/register", "/subscription"];
+
+function SaasGuard() {
+  const [location, navigate] = useLocation();
+
+  useEffect(() => {
+    const isPublic =
+      PUBLIC_ROUTES.includes(location) ||
+      location.startsWith("/b/");
+
+    if (isPublic) return;
+
+    fetch("/api/saas/subscription")
+      .then((r) => r.json())
+      .then((data) => {
+        const sub = data.subscription;
+
+        // Sem assinatura alguma — redireciona
+        if (!sub) {
+          navigate("/subscription");
+          return;
+        }
+
+        // Trial válido — deixa passar
+        if (sub.status === "trialing") {
+          const trialEnd = new Date(sub.trial_ends_at);
+          if (trialEnd >= new Date()) return;
+        }
+
+        // Assinatura ativa — deixa passar
+        if (sub.status === "active") return;
+
+        // Qualquer outro status (expired, cancelled, past_due) — redireciona
+        navigate("/subscription");
+      })
+      .catch(() => {
+        // Fail open
+      });
+  }, [location]);
+
+  return null;
+}
 function Router() {
   return (
     <Switch>
@@ -35,13 +83,15 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/clients" component={Clients} />
       <Route path="/barbers" component={Barbers} />
-      <Route path="/plans" component={Plans} />
       <Route path="/services" component={Services} />
       <Route path="/appointments" component={Appointments} />
       <Route path="/payments" component={Payments} />
       <Route path="/reports" component={Reports} />
       <Route path="/marketing" component={Marketing} />
       <Route path="/team-access" component={TeamAccess} />
+      <Route path="/plans" component={Plans} />
+      <Route path="/subscription" component={Subscription} />
+
       {/* ─── Portal público da barbearia ──────────────────────── */}
       <Route path="/b/:slug" component={BarbershopPage} />
       <Route path="/b/:slug/agendar" component={BookingPage} />
@@ -63,6 +113,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
+          <SaasGuard />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

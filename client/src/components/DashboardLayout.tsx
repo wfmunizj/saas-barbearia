@@ -52,6 +52,8 @@ const allMenuItems = [
   { icon: Users, label: "Clientes", path: "/clients", roles: ["owner"] },
   { icon: Scissors, label: "Barbeiros", path: "/barbers", roles: ["owner"] },
   { icon: Tag, label: "Serviços", path: "/services", roles: ["owner"] },
+  { path: "/subscription", label: "Minha Assinatura", icon: CreditCard },
+
   {
     icon: CreditCard,
     label: "Pagamentos",

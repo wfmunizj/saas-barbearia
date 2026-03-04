@@ -193,6 +193,62 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // ─── Verifica limite do plano SaaS ───────────────────────────────────
+        const subResult = await dbInstance.execute(
+          ("SELECT ss.status, ss.trial_ends_at, sp.max_barbers " +
+            "FROM saas_subscriptions ss " +
+            "JOIN saas_plans sp ON sp.id = ss.saas_plan_id " +
+            "WHERE ss.barbershop_id = " +
+            barbershopId +
+            " LIMIT 1") as any
+        );
+        const subRows = Array.isArray(subResult)
+          ? subResult
+          : ((subResult as any).rows ?? []);
+        const sub = subRows[0];
+
+        if (sub) {
+          // Verifica se assinatura está ativa
+          const isTrialing =
+            sub.status === "trialing" &&
+            new Date(sub.trial_ends_at) >= new Date();
+          const isActive = sub.status === "active";
+          if (!isTrialing && !isActive) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message:
+                "Sua assinatura está inativa. Acesse 'Minha Assinatura' para reativar.",
+            });
+          }
+
+          // Verifica limite de barbeiros (-1 = ilimitado)
+          if (sub.max_barbers !== -1) {
+            const countResult = await dbInstance.execute(
+              ("SELECT COUNT(*) as total FROM barbers " +
+                "WHERE barbershop_id = " +
+                barbershopId +
+                " AND is_active = true") as any
+            );
+            const countRows = Array.isArray(countResult)
+              ? countResult
+              : ((countResult as any).rows ?? []);
+            const total = parseInt(
+              countRows[0]?.total ?? countRows[0]?.count ?? "0"
+            );
+
+            if (total >= sub.max_barbers) {
+              throw new TRPCError({
+                code: "FORBIDDEN",
+                message: `Seu plano permite até ${sub.max_barbers} barbeiro${sub.max_barbers !== 1 ? "s" : ""}. Faça upgrade para adicionar mais.`,
+              });
+            }
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         return db.createBarber({ ...input, barbershopId });
       }),
 

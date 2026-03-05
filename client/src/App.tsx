@@ -19,6 +19,7 @@ import Register from "./pages/Register";
 import Plans from "./pages/Plans";
 import TeamAccess from "./pages/TeamAccess";
 import BarberSummary from "./pages/BarberSummary";
+import MyBarberSummary from "./pages/MyBarberSummary";
 
 // Portal do cliente
 import BarbershopPage from "./pages/portal/BarbershopPage";
@@ -85,6 +86,7 @@ function Router() {
       <Route path="/clients" component={Clients} />
       <Route path="/barbers" component={Barbers} />
       <Route path="/barbeiros/:id/resumo" component={BarberSummary} />
+      <Route path="/meu-resumo" component={MyBarberSummary} />
       <Route path="/services" component={Services} />
       <Route path="/appointments" component={Appointments} />
       <Route path="/payments" component={Payments} />

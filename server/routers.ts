@@ -56,7 +56,11 @@ export const appRouter = router({
       if (user.barbershopId) {
         barbershop = await db.getBarbershopById(user.barbershopId);
       }
-      return { ...user, barbershop };
+      let barberId: number | null = null;
+      if (user.role === "barber") {
+        barberId = await getLinkedBarberId(user.id);
+      }
+      return { ...user, barbershop, barberId };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);

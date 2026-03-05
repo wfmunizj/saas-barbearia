@@ -37,7 +37,7 @@ async function getOwner(req: Request) {
   const db = await getDb();
   if (!db) return null;
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || (user.role !== "owner" && user.role !== "admin")) return null;
+  if (!user || !["owner", "admin", "barber"].includes(user.role)) return null;
   return user;
 }
 

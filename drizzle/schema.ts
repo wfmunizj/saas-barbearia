@@ -387,3 +387,20 @@ export const barberCommissionRecords = pgTable("barber_commission_records", {
 
 export type BarberCommissionRecord = typeof barberCommissionRecords.$inferSelect;
 export type InsertBarberCommissionRecord = typeof barberCommissionRecords.$inferInsert;
+
+// ─── Pagamentos de Comissão (lote) ───────────────────────────────────────────
+
+export const commissionPayments = pgTable("commission_payments", {
+  id: serial("id").primaryKey(),
+  barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
+  barberId: integer("barber_id").notNull().references(() => barbers.id, { onDelete: "cascade" }),
+  amountInCents: integer("amount_in_cents").notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull().default("cash"),
+  notes: text("notes"),
+  paidAt: timestamp("paid_at").defaultNow().notNull(),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type CommissionPayment = typeof commissionPayments.$inferSelect;
+export type InsertCommissionPayment = typeof commissionPayments.$inferInsert;

@@ -13,7 +13,7 @@ import { TRPCError } from "@trpc/server";
 import { clientPortalRouter } from "./clientRouter";
 import {
   plans, clientUsers, subscriptions, barbers, appointments, services,
-  planServices, barberCommissionRecords,
+  planServices, barberCommissionRecords, commissionPayments,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import Stripe from "stripe";
@@ -597,6 +597,91 @@ export const appRouter = router({
             ));
         }
         return { success: true };
+      }),
+
+    // Saldo acumulado de comissões de um barbeiro (total gerado − total pago)
+    getBalance: protectedProcedure
+      .input(z.object({ barberId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        const earned = await dbInstance
+          .select({ total: sql<number>`COALESCE(SUM(${barberCommissionRecords.commissionAmountInCents}), 0)` })
+          .from(barberCommissionRecords)
+          .where(and(
+            eq(barberCommissionRecords.barberId, input.barberId),
+            eq(barberCommissionRecords.barbershopId, barbershopId)
+          ));
+
+        const paid = await dbInstance
+          .select({ total: sql<number>`COALESCE(SUM(${commissionPayments.amountInCents}), 0)` })
+          .from(commissionPayments)
+          .where(and(
+            eq(commissionPayments.barberId, input.barberId),
+            eq(commissionPayments.barbershopId, barbershopId)
+          ));
+
+        const totalEarned = Number(earned[0]?.total ?? 0);
+        const totalPaid = Number(paid[0]?.total ?? 0);
+
+        return {
+          totalEarnedInCents: totalEarned,
+          totalPaidInCents: totalPaid,
+          balanceInCents: Math.max(0, totalEarned - totalPaid),
+        };
+      }),
+
+    // Registrar pagamento de comissão (lote)
+    recordPayment: protectedProcedure
+      .input(z.object({
+        barberId: z.number(),
+        amountInCents: z.number().min(1),
+        paymentMethod: z.enum(["cash", "pix", "transfer", "other"]).default("cash"),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = (ctx.user as any).id;
+        const barbershopId = await getBarbershopId(userId);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Valida que o barbeiro pertence à barbearia
+        const [barber] = await dbInstance.select({ id: barbers.id })
+          .from(barbers)
+          .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershopId)))
+          .limit(1);
+        if (!barber) throw new TRPCError({ code: "NOT_FOUND", message: "Barbeiro não encontrado" });
+
+        const [payment] = await dbInstance.insert(commissionPayments).values({
+          barbershopId,
+          barberId: input.barberId,
+          amountInCents: input.amountInCents,
+          paymentMethod: input.paymentMethod,
+          notes: input.notes ?? null,
+          createdByUserId: userId,
+          paidAt: new Date(),
+        }).returning();
+
+        return payment;
+      }),
+
+    // Histórico de pagamentos de comissão de um barbeiro
+    getPaymentHistory: protectedProcedure
+      .input(z.object({ barberId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) return [];
+
+        return dbInstance.select()
+          .from(commissionPayments)
+          .where(and(
+            eq(commissionPayments.barberId, input.barberId),
+            eq(commissionPayments.barbershopId, barbershopId)
+          ))
+          .orderBy(sql`${commissionPayments.paidAt} DESC`);
       }),
   }),
 

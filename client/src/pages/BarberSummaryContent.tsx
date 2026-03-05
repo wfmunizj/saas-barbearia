@@ -2,15 +2,23 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { ArrowLeft, Scissors, DollarSign, CheckCircle, Clock, Percent } from "lucide-react";
+import { ArrowLeft, Scissors, DollarSign, Clock, Percent, Wallet, History } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 function fmt(cents: number) {
   return `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
 }
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: "Dinheiro",
+  pix: "Pix",
+  transfer: "Transferência",
+  other: "Outro",
+};
 
 type Props = {
   barberId: number;
@@ -20,6 +28,7 @@ type Props = {
 
 export default function BarberSummaryContent({ barberId, backPath, showPayControls = false }: Props) {
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
 
   const today = new Date();
   const [startDate, setStartDate] = useState(
@@ -27,22 +36,23 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
   );
   const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
 
-  const { data, isLoading, refetch } = trpc.barbers.summary.useQuery({
-    barberId,
-    startDate,
-    endDate,
-  });
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState<"cash" | "pix" | "transfer" | "other">("cash");
+  const [payNotes, setPayNotes] = useState("");
 
-  const { data: commissions, refetch: refetchCommissions } = trpc.commissions.list.useQuery({
-    barberId,
-    paid: false,
-  });
+  const { data, isLoading, refetch } = trpc.barbers.summary.useQuery({ barberId, startDate, endDate });
+  const { data: balance, refetch: refetchBalance } = trpc.commissions.getBalance.useQuery({ barberId });
+  const { data: paymentHistory, refetch: refetchHistory } = trpc.commissions.getPaymentHistory.useQuery({ barberId });
 
-  const markPaidMutation = trpc.commissions.markAsPaid.useMutation({
+  const recordPaymentMutation = trpc.commissions.recordPayment.useMutation({
     onSuccess: () => {
-      toast.success("Comissão marcada como paga!");
-      refetchCommissions();
+      toast.success("Pagamento registrado com sucesso!");
+      setPayAmount("");
+      setPayNotes("");
+      refetchBalance();
+      refetchHistory();
       refetch();
+      utils.commissions.getBalance.invalidate();
     },
     onError: err => toast.error(err.message),
   });
@@ -73,8 +83,32 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
     );
   }
 
-  const pendingCommissions = commissions?.filter((c: any) => !c.paid && c.barberId === barberId) ?? [];
-  const pendingCommissionIds = pendingCommissions.map((c: any) => c.id);
+  const balanceInCents = balance?.balanceInCents ?? 0;
+  const totalEarned = balance?.totalEarnedInCents ?? 0;
+  const totalPaid = balance?.totalPaidInCents ?? 0;
+
+  function applyPercent(pct: number) {
+    const value = Math.round(balanceInCents * pct) / 100;
+    setPayAmount((value / 100).toFixed(2));
+  }
+
+  function handleRegisterPayment() {
+    const cents = Math.round(parseFloat(payAmount.replace(",", ".")) * 100);
+    if (isNaN(cents) || cents <= 0) {
+      toast.error("Informe um valor válido.");
+      return;
+    }
+    if (cents > balanceInCents) {
+      toast.error("Valor maior que o saldo pendente.");
+      return;
+    }
+    recordPaymentMutation.mutate({
+      barberId,
+      amountInCents: cents,
+      paymentMethod: payMethod,
+      notes: payNotes || undefined,
+    });
+  }
 
   return (
     <DashboardLayout>
@@ -118,7 +152,7 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
           </CardContent>
         </Card>
 
-        {/* Cards de métricas */}
+        {/* Cards de métricas do período */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 space-y-1">
@@ -146,57 +180,170 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
           <Card>
             <CardContent className="p-4 space-y-1">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Percent className="h-4 w-4" /><span className="text-xs">Comissão</span>
+                <Percent className="h-4 w-4" /><span className="text-xs">Comissão no Período</span>
               </div>
               <p className="text-2xl font-bold">{fmt(data.commissionAmountInCents)}</p>
               <p className="text-xs text-muted-foreground">{data.commissionPercent}% sobre receita</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={balanceInCents > 0 ? "border-amber-400" : "border-green-400"}>
             <CardContent className="p-4 space-y-1">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="h-4 w-4" /><span className="text-xs">Comissão Pendente</span>
+                <Clock className="h-4 w-4" /><span className="text-xs">Saldo Pendente</span>
               </div>
-              <p className="text-2xl font-bold text-amber-600">{fmt(data.pendingCommission)}</p>
-              <p className="text-xs text-muted-foreground">Aguardando pagamento</p>
+              <p className={`text-2xl font-bold ${balanceInCents > 0 ? "text-amber-600" : "text-green-600"}`}>
+                {fmt(balanceInCents)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {balanceInCents > 0 ? "Aguardando pagamento" : "Em dia"}
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Comissões pendentes */}
-        {pendingCommissionIds.length > 0 && (
+        {/* Bloco de pagamento (owner) */}
+        {showPayControls && (
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Comissões Pendentes</CardTitle>
-                {showPayControls && (
-                  <Button size="sm" onClick={() => markPaidMutation.mutate({ ids: pendingCommissionIds })}
-                    disabled={markPaidMutation.isPending}>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Marcar todas como pagas
-                  </Button>
-                )}
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Pagar Comissão
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Resumo acumulado */}
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total gerado</p>
+                  <p className="font-bold">{fmt(totalEarned)}</p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total pago</p>
+                  <p className="font-bold text-green-600">{fmt(totalPaid)}</p>
+                </div>
+                <div className={`rounded-lg p-3 ${balanceInCents > 0 ? "bg-amber-50 dark:bg-amber-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                  <p className="text-xs text-muted-foreground">Saldo devedor</p>
+                  <p className={`font-bold ${balanceInCents > 0 ? "text-amber-600" : "text-green-600"}`}>
+                    {fmt(balanceInCents)}
+                  </p>
+                </div>
               </div>
+
+              {balanceInCents > 0 ? (
+                <>
+                  {/* Atalhos de percentual */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Valor a pagar</p>
+                    <div className="flex gap-2">
+                      {[25, 50, 75, 100].map(pct => (
+                        <Button key={pct} variant="outline" size="sm" className="flex-1" onClick={() => applyPercent(pct)}>
+                          {pct}%
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-sm font-medium text-muted-foreground shrink-0">R$</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={payAmount}
+                        onChange={e => setPayAmount(e.target.value)}
+                        className="text-right"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Método */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Método de pagamento</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["cash", "pix", "transfer", "other"] as const).map(m => (
+                        <Button key={m} variant={payMethod === m ? "default" : "outline"} size="sm" onClick={() => setPayMethod(m)}>
+                          {METHOD_LABELS[m]}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Input
+                    placeholder="Observação (opcional)"
+                    value={payNotes}
+                    onChange={e => setPayNotes(e.target.value)}
+                  />
+
+                  <Button
+                    className="w-full"
+                    onClick={handleRegisterPayment}
+                    disabled={recordPaymentMutation.isPending || !payAmount}
+                  >
+                    {recordPaymentMutation.isPending ? "Registrando..." : "Registrar Pagamento"}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-center text-sm text-green-600 font-medium py-2">
+                  Nenhum saldo pendente — comissões em dia!
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Saldo para o barbeiro (leitura) */}
+        {!showPayControls && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Saldo de Comissões
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total gerado</p>
+                  <p className="font-bold">{fmt(totalEarned)}</p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total recebido</p>
+                  <p className="font-bold text-green-600">{fmt(totalPaid)}</p>
+                </div>
+                <div className={`rounded-lg p-3 ${balanceInCents > 0 ? "bg-amber-50 dark:bg-amber-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                  <p className="text-xs text-muted-foreground">A receber</p>
+                  <p className={`font-bold ${balanceInCents > 0 ? "text-amber-600" : "text-green-600"}`}>
+                    {fmt(balanceInCents)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Histórico de pagamentos */}
+        {paymentHistory && paymentHistory.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="h-4 w-4" />
+                {showPayControls ? "Histórico de Pagamentos" : "Pagamentos Recebidos"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {pendingCommissions.map((c: any) => (
-                  <div key={c.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                {paymentHistory.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
-                      <p className="text-sm font-medium">Agendamento #{c.appointmentId}</p>
+                      <p className="text-sm font-medium">{METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</p>
                       <p className="text-xs text-muted-foreground">
-                        Serviço: {fmt(c.serviceAmountInCents)} × {parseFloat(c.commissionPercent).toFixed(0)}%
+                        {new Date(p.paidAt).toLocaleDateString("pt-BR", {
+                          day: "2-digit", month: "short", year: "numeric",
+                        })}
+                        {p.notes && ` · ${p.notes}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-amber-600">{fmt(c.commissionAmountInCents)}</span>
-                      {showPayControls && (
-                        <Button variant="outline" size="sm" onClick={() => markPaidMutation.mutate({ ids: [c.id] })}>
-                          Pagar
-                        </Button>
-                      )}
-                    </div>
+                    <span className="font-semibold text-green-600">{fmt(p.amountInCents)}</span>
                   </div>
                 ))}
               </div>

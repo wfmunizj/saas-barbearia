@@ -230,60 +230,59 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 </div>
               </div>
 
-              {balanceInCents > 0 ? (
-                <>
-                  {/* Atalhos de percentual */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Valor a pagar</p>
-                    <div className="flex gap-2">
-                      {[25, 50, 75, 100].map(pct => (
-                        <Button key={pct} variant="outline" size="sm" className="flex-1" onClick={() => applyPercent(pct)}>
-                          {pct}%
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <span className="text-sm font-medium text-muted-foreground shrink-0">R$</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0,00"
-                        value={payAmount}
-                        onChange={e => setPayAmount(e.target.value)}
-                        className="text-right"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Método */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Método de pagamento</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {(["cash", "pix", "transfer", "other"] as const).map(m => (
-                        <Button key={m} variant={payMethod === m ? "default" : "outline"} size="sm" onClick={() => setPayMethod(m)}>
-                          {METHOD_LABELS[m]}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
+              {/* Atalhos de percentual */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Valor a pagar</p>
+                <div className="flex gap-2">
+                  {[25, 50, 75, 100].map(pct => (
+                    <Button key={pct} variant="outline" size="sm" className="flex-1"
+                      onClick={() => applyPercent(pct)} disabled={balanceInCents === 0}>
+                      {pct}%
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <span className="text-sm font-medium text-muted-foreground shrink-0">R$</span>
                   <Input
-                    placeholder="Observação (opcional)"
-                    value={payNotes}
-                    onChange={e => setPayNotes(e.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={payAmount}
+                    onChange={e => setPayAmount(e.target.value)}
+                    className="text-right"
                   />
+                </div>
+              </div>
 
-                  <Button
-                    className="w-full"
-                    onClick={handleRegisterPayment}
-                    disabled={recordPaymentMutation.isPending || !payAmount}
-                  >
-                    {recordPaymentMutation.isPending ? "Registrando..." : "Registrar Pagamento"}
-                  </Button>
-                </>
-              ) : (
-                <p className="text-center text-sm text-green-600 font-medium py-2">
+              {/* Método */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Método de pagamento</p>
+                <div className="flex gap-2 flex-wrap">
+                  {(["cash", "pix", "transfer", "other"] as const).map(m => (
+                    <Button key={m} variant={payMethod === m ? "default" : "outline"} size="sm" onClick={() => setPayMethod(m)}>
+                      {METHOD_LABELS[m]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <Input
+                placeholder="Observação (opcional)"
+                value={payNotes}
+                onChange={e => setPayNotes(e.target.value)}
+              />
+
+              <Button
+                className="w-full"
+                onClick={handleRegisterPayment}
+                disabled={recordPaymentMutation.isPending || !payAmount || balanceInCents === 0}
+              >
+                {recordPaymentMutation.isPending ? "Registrando..." : "Registrar Pagamento"}
+              </Button>
+
+              {balanceInCents === 0 && (
+                <p className="text-center text-sm text-green-600 font-medium">
                   Nenhum saldo pendente — comissões em dia!
                 </p>
               )}

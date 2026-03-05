@@ -501,7 +501,40 @@ export const appRouter = router({
         }
 
         const { id, ...data } = input;
-        return db.updateAppointment(id, barbershopId, data);
+        const result = await db.updateAppointment(id, barbershopId, data);
+
+        // Auto-criar registro de comissão quando status muda para "completed"
+        if (input.status === "completed") {
+          const dbInstance = await import("./db").then(m => m.getDb());
+          if (dbInstance) {
+            const [appt] = await dbInstance.select({
+              id: appointments.id,
+              barberId: appointments.barberId,
+              commissionPercent: barbers.commissionPercent,
+              priceInCents: services.priceInCents,
+            })
+              .from(appointments)
+              .innerJoin(barbers, eq(appointments.barberId, barbers.id))
+              .innerJoin(services, eq(appointments.serviceId, services.id))
+              .where(and(eq(appointments.id, id), eq(appointments.barbershopId, barbershopId)))
+              .limit(1);
+
+            if (appt) {
+              const commissionPct = parseFloat(appt.commissionPercent ?? "0");
+              const commissionAmountInCents = Math.floor((appt.priceInCents ?? 0) * commissionPct / 100);
+              await dbInstance.insert(barberCommissionRecords).values({
+                barbershopId,
+                barberId: appt.barberId,
+                appointmentId: appt.id,
+                commissionPercent: String(commissionPct),
+                serviceAmountInCents: appt.priceInCents ?? 0,
+                commissionAmountInCents,
+              }).onConflictDoNothing();
+            }
+          }
+        }
+
+        return result;
       }),
 
     // Cancelamento pelo admin com geração de registro de comissão quando concluído

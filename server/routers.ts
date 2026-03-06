@@ -13,7 +13,7 @@ import { TRPCError } from "@trpc/server";
 import { clientPortalRouter } from "./clientRouter";
 import {
   plans, clientUsers, subscriptions, barbers, appointments, services,
-  planServices, barberCommissionRecords, commissionPayments,
+  planServices, barberCommissionRecords, commissionPayments, barberFichaRecords,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import Stripe from "stripe";
@@ -88,11 +88,78 @@ export const appRouter = router({
           whatsappApiUrl: z.string().optional(),
           whatsappApiKey: z.string().optional(),
           whatsappInstanceName: z.string().optional(),
+          primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+          secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
         return db.updateBarbershop(barbershopId, input);
+      }),
+
+    // Lista todas as barbearias de um owner
+    myList: protectedProcedure.query(async ({ ctx }) => {
+      const userId = (ctx.user as any).id;
+      return db.getBarbershopsByOwnerId(userId);
+    }),
+
+    // Troca a barbearia ativa do owner
+    switch: protectedProcedure
+      .input(z.object({ barbershopId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = (ctx.user as any).id;
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Valida que a barbearia pertence ao owner
+        const [target] = await dbInstance.select({ id: barbershops.id, ownerId: barbershops.ownerId })
+          .from(barbershops)
+          .where(eq(barbershops.id, input.barbershopId))
+          .limit(1);
+        if (!target || target.ownerId !== userId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem permissão para acessar esta barbearia." });
+        }
+
+        await db.updateUserBarbershopId(userId, input.barbershopId);
+        return { success: true };
+      }),
+
+    // Cria uma nova barbearia para o owner e faz switch automático
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        slug: z.string().min(2).regex(/^[a-z0-9-]+$/, "Slug deve conter apenas letras minúsculas, números e hífens"),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = (ctx.user as any).id;
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Verifica se o slug já está em uso
+        const [existingSlug] = await dbInstance.select({ id: barbershops.id })
+          .from(barbershops)
+          .where(eq(barbershops.slug, input.slug))
+          .limit(1);
+        if (existingSlug) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este slug já está em uso. Escolha outro." });
+        }
+
+        const [newShop] = await dbInstance.insert(barbershops).values({
+          name: input.name,
+          slug: input.slug,
+          phone: input.phone ?? null,
+          address: input.address ?? null,
+          ownerId: userId,
+          plan: "free",
+          isActive: true,
+        }).returning();
+
+        // Switch automático para a nova barbearia
+        await db.updateUserBarbershopId(userId, newShop.id);
+
+        return newShop;
       }),
 
     getWhatsappStatus: protectedProcedure.query(async ({ ctx }) => {
@@ -196,6 +263,7 @@ export const appRouter = router({
           phone: z.string().optional(),
           email: z.string().optional(),
           specialties: z.string().optional(),
+          fichaValueInCents: z.number().int().min(0).default(0),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -270,6 +338,7 @@ export const appRouter = router({
           isActive: z.boolean().optional(),
           commissionPercent: z.number().min(0).max(100).optional(),
           bonusAmountInCents: z.number().min(0).optional(),
+          fichaValueInCents: z.number().int().min(0).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -379,6 +448,7 @@ export const appRouter = router({
           description: z.string().optional(),
           durationMinutes: z.number(),
           priceInCents: z.number(),
+          fichasCount: z.number().int().min(0).default(0),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -395,6 +465,7 @@ export const appRouter = router({
           durationMinutes: z.number().optional(),
           priceInCents: z.number().optional(),
           isActive: z.boolean().optional(),
+          fichasCount: z.number().int().min(0).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -503,15 +574,18 @@ export const appRouter = router({
         const { id, ...data } = input;
         const result = await db.updateAppointment(id, barbershopId, data);
 
-        // Auto-criar registro de comissão quando status muda para "completed"
+        // Auto-criar registro de comissão/fichas quando status muda para "completed"
         if (input.status === "completed") {
           const dbInstance = await import("./db").then(m => m.getDb());
           if (dbInstance) {
             const [appt] = await dbInstance.select({
               id: appointments.id,
               barberId: appointments.barberId,
+              clientId: appointments.clientId,
               commissionPercent: barbers.commissionPercent,
+              fichaValueInCents: barbers.fichaValueInCents,
               priceInCents: services.priceInCents,
+              fichasCount: services.fichasCount,
             })
               .from(appointments)
               .innerJoin(barbers, eq(appointments.barberId, barbers.id))
@@ -520,16 +594,45 @@ export const appRouter = router({
               .limit(1);
 
             if (appt) {
-              const commissionPct = parseFloat(appt.commissionPercent ?? "0");
-              const commissionAmountInCents = Math.floor((appt.priceInCents ?? 0) * commissionPct / 100);
-              await dbInstance.insert(barberCommissionRecords).values({
-                barbershopId,
-                barberId: appt.barberId,
-                appointmentId: appt.id,
-                commissionPercent: String(commissionPct),
-                serviceAmountInCents: appt.priceInCents ?? 0,
-                commissionAmountInCents,
-              }).onConflictDoNothing();
+              // Verificar se o cliente possui plano ilimitado ativo
+              const unlimitedSub = await dbInstance.select({ isUnlimited: plans.isUnlimited })
+                .from(subscriptions)
+                .innerJoin(clientUsers, eq(subscriptions.clientUserId, clientUsers.id))
+                .innerJoin(plans, eq(subscriptions.planId, plans.id))
+                .where(and(
+                  eq(clientUsers.clientId, appt.clientId),
+                  eq(clientUsers.barbershopId, barbershopId),
+                  eq(subscriptions.status, "active"),
+                  eq(plans.isUnlimited, true),
+                ))
+                .limit(1);
+
+              const isUnlimitedPlan = unlimitedSub.length > 0;
+
+              if (isUnlimitedPlan && (appt.fichasCount ?? 0) > 0) {
+                // Plano ilimitado: criar registro de fichas
+                const totalValueInCents = (appt.fichasCount ?? 0) * (appt.fichaValueInCents ?? 0);
+                await dbInstance.insert(barberFichaRecords).values({
+                  barbershopId,
+                  barberId: appt.barberId,
+                  appointmentId: appt.id,
+                  fichasCount: appt.fichasCount ?? 0,
+                  fichaValueInCents: appt.fichaValueInCents ?? 0,
+                  totalValueInCents,
+                }).onConflictDoNothing();
+              } else {
+                // Plano créditos / avulso: criar registro de comissão
+                const commissionPct = parseFloat(appt.commissionPercent ?? "0");
+                const commissionAmountInCents = Math.floor((appt.priceInCents ?? 0) * commissionPct / 100);
+                await dbInstance.insert(barberCommissionRecords).values({
+                  barbershopId,
+                  barberId: appt.barberId,
+                  appointmentId: appt.id,
+                  commissionPercent: String(commissionPct),
+                  serviceAmountInCents: appt.priceInCents ?? 0,
+                  commissionAmountInCents,
+                }).onConflictDoNothing();
+              }
             }
           }
         }
@@ -632,7 +735,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Saldo acumulado de comissões de um barbeiro (total gerado − total pago)
+    // Saldo acumulado de comissões + fichas de um barbeiro (total gerado − total pago)
     getBalance: protectedProcedure
       .input(z.object({ barberId: z.number() }))
       .query(async ({ ctx, input }) => {
@@ -640,12 +743,20 @@ export const appRouter = router({
         const dbInstance = await import("./db").then(m => m.getDb());
         if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-        const earned = await dbInstance
+        const commissionEarned = await dbInstance
           .select({ total: sql<number>`COALESCE(SUM(${barberCommissionRecords.commissionAmountInCents}), 0)` })
           .from(barberCommissionRecords)
           .where(and(
             eq(barberCommissionRecords.barberId, input.barberId),
             eq(barberCommissionRecords.barbershopId, barbershopId)
+          ));
+
+        const fichaEarned = await dbInstance
+          .select({ total: sql<number>`COALESCE(SUM(${barberFichaRecords.totalValueInCents}), 0)` })
+          .from(barberFichaRecords)
+          .where(and(
+            eq(barberFichaRecords.barberId, input.barberId),
+            eq(barberFichaRecords.barbershopId, barbershopId)
           ));
 
         const paid = await dbInstance
@@ -656,11 +767,15 @@ export const appRouter = router({
             eq(commissionPayments.barbershopId, barbershopId)
           ));
 
-        const totalEarned = Number(earned[0]?.total ?? 0);
+        const totalCommission = Number(commissionEarned[0]?.total ?? 0);
+        const totalFichas = Number(fichaEarned[0]?.total ?? 0);
+        const totalEarned = totalCommission + totalFichas;
         const totalPaid = Number(paid[0]?.total ?? 0);
 
         return {
           totalEarnedInCents: totalEarned,
+          totalCommissionInCents: totalCommission,
+          totalFichasInCents: totalFichas,
           totalPaidInCents: totalPaid,
           balanceInCents: Math.max(0, totalEarned - totalPaid),
         };
@@ -715,6 +830,46 @@ export const appRouter = router({
             eq(commissionPayments.barbershopId, barbershopId)
           ))
           .orderBy(sql`${commissionPayments.paidAt} DESC`);
+      }),
+
+    // Registros de fichas de um barbeiro no período
+    getFichas: protectedProcedure
+      .input(z.object({
+        barberId: z.number(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) return { records: [], totalFichas: 0, totalValueInCents: 0 };
+
+        const conditions = [
+          eq(barberFichaRecords.barberId, input.barberId),
+          eq(barberFichaRecords.barbershopId, barbershopId),
+        ];
+        if (input.startDate) conditions.push(gte(barberFichaRecords.createdAt, new Date(input.startDate)));
+        if (input.endDate) conditions.push(lte(barberFichaRecords.createdAt, new Date(input.endDate + "T23:59:59")));
+
+        const records = await dbInstance.select({
+          id: barberFichaRecords.id,
+          appointmentId: barberFichaRecords.appointmentId,
+          fichasCount: barberFichaRecords.fichasCount,
+          fichaValueInCents: barberFichaRecords.fichaValueInCents,
+          totalValueInCents: barberFichaRecords.totalValueInCents,
+          createdAt: barberFichaRecords.createdAt,
+          serviceName: services.name,
+        })
+          .from(barberFichaRecords)
+          .innerJoin(appointments, eq(barberFichaRecords.appointmentId, appointments.id))
+          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .where(and(...conditions))
+          .orderBy(sql`${barberFichaRecords.createdAt} DESC`);
+
+        const totalFichas = records.reduce((sum, r) => sum + (r.fichasCount ?? 0), 0);
+        const totalValueInCents = records.reduce((sum, r) => sum + (r.totalValueInCents ?? 0), 0);
+
+        return { records, totalFichas, totalValueInCents };
       }),
   }),
 

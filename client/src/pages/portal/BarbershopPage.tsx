@@ -35,14 +35,20 @@ export default function BarbershopPublicPage() {
     );
   }
 
+  const primaryColor = barbershop.primaryColor ?? "#000000";
+  const secondaryColor = barbershop.secondaryColor ?? "#FFFFFF";
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{
+      "--portal-primary": primaryColor,
+      "--portal-secondary": secondaryColor,
+    } as React.CSSProperties}>
       {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-40">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-primary rounded-xl p-2">
-              <Scissors className="h-5 w-5 text-primary-foreground" />
+            <div className="rounded-xl p-2" style={{ backgroundColor: primaryColor }}>
+              <Scissors className="h-5 w-5" style={{ color: secondaryColor }} />
             </div>
             <span className="font-bold text-lg">{barbershop.name}</span>
           </div>
@@ -78,7 +84,8 @@ export default function BarbershopPublicPage() {
           {barbershop.address && (
             <p className="text-muted-foreground">{barbershop.address}</p>
           )}
-          <Button size="lg" onClick={() => navigate(`/b/${slug}/agendar`)}>
+          <Button size="lg" onClick={() => navigate(`/b/${slug}/agendar`)}
+            style={{ backgroundColor: primaryColor, color: secondaryColor }}>
             Agendar Agora
             <ChevronRight className="ml-2 h-4 w-4" />
           </Button>

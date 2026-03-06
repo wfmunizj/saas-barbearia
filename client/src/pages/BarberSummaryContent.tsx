@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { ArrowLeft, Scissors, DollarSign, Clock, Percent, Wallet, History } from "lucide-react";
+import { ArrowLeft, Scissors, DollarSign, Clock, Percent, Wallet, History, Ticket } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -43,6 +43,7 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
   const { data, isLoading, refetch } = trpc.barbers.summary.useQuery({ barberId, startDate, endDate });
   const { data: balance, refetch: refetchBalance } = trpc.commissions.getBalance.useQuery({ barberId });
   const { data: paymentHistory, refetch: refetchHistory } = trpc.commissions.getPaymentHistory.useQuery({ barberId });
+  const { data: fichasData, refetch: refetchFichas } = trpc.commissions.getFichas.useQuery({ barberId, startDate, endDate });
 
   const recordPaymentMutation = trpc.commissions.recordPayment.useMutation({
     onSuccess: () => {
@@ -51,6 +52,7 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
       setPayNotes("");
       refetchBalance();
       refetchHistory();
+      refetchFichas();
       refetch();
       utils.commissions.getBalance.invalidate();
     },
@@ -142,7 +144,7 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm bg-background" />
               </div>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>Filtrar</Button>
+              <Button variant="outline" size="sm" onClick={() => { refetch(); refetchFichas(); }}>Filtrar</Button>
               <Button variant="outline" size="sm" onClick={() => {
                 const now = new Date();
                 setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
@@ -343,6 +345,45 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                       </p>
                     </div>
                     <span className="font-semibold text-green-600">{fmt(p.amountInCents)}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Fichas no período (plano ilimitado) */}
+        {fichasData && fichasData.totalFichas > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Ticket className="h-4 w-4 text-amber-500" />
+                Fichas no Período (Plano Ilimitado)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 mb-4 text-center text-sm">
+                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total de fichas</p>
+                  <p className="text-2xl font-bold text-amber-600">{fichasData.totalFichas}</p>
+                </div>
+                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Valor total</p>
+                  <p className="text-2xl font-bold text-amber-600">{fmt(fichasData.totalValueInCents)}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {fichasData.records.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between py-2 border-b last:border-0 text-sm">
+                    <div>
+                      <p className="font-medium">{r.serviceName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(r.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                        {" · "}{r.fichasCount} ficha{r.fichasCount !== 1 ? "s" : ""}
+                        {r.fichaValueInCents > 0 && ` × ${fmt(r.fichaValueInCents)}`}
+                      </p>
+                    </div>
+                    <span className="font-semibold text-amber-600">{fmt(r.totalValueInCents)}</span>
                   </div>
                 ))}
               </div>

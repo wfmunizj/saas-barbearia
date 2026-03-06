@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, Pencil, Trash2, Clock, DollarSign, AlertCircle } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Clock, DollarSign, AlertCircle, Ticket } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,7 @@ export default function Services() {
     description: "",
     durationMinutes: "",
     priceInCents: "",
+    fichasCount: "0",
   });
 
   const { data: services, isLoading, refetch } = trpc.services.list.useQuery();
@@ -73,7 +74,7 @@ export default function Services() {
   });
 
   const resetForm = () => {
-    setFormData({ name: "", description: "", durationMinutes: "", priceInCents: "" });
+    setFormData({ name: "", description: "", durationMinutes: "", priceInCents: "", fichasCount: "0" });
     setEditingService(null);
   };
 
@@ -84,6 +85,7 @@ export default function Services() {
       description: formData.description || undefined,
       durationMinutes: parseInt(formData.durationMinutes),
       priceInCents: Math.round(parseFloat(formData.priceInCents) * 100),
+      fichasCount: parseInt(formData.fichasCount) || 0,
     };
 
     if (editingService) {
@@ -100,6 +102,7 @@ export default function Services() {
       description: service.description || "",
       durationMinutes: service.durationMinutes.toString(),
       priceInCents: (service.priceInCents / 100).toFixed(2),
+      fichasCount: (service.fichasCount ?? 0).toString(),
     });
     setIsDialogOpen(true);
   };
@@ -205,6 +208,22 @@ export default function Services() {
                         required
                       />
                     </div>
+                  </div>
+                  <div className="border-t pt-4 space-y-2">
+                    <Label htmlFor="fichasCount" className="flex items-center gap-1">
+                      <Ticket className="h-4 w-4" /> Fichas geradas (plano ilimitado)
+                    </Label>
+                    <Input
+                      id="fichasCount"
+                      type="number"
+                      min="0"
+                      value={formData.fichasCount}
+                      onChange={(e) => setFormData({ ...formData, fichasCount: e.target.value })}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Quantidade de fichas que o barbeiro recebe ao realizar este serviço em um cliente de plano ilimitado. 0 = não gera fichas.
+                    </p>
                   </div>
                 </div>
                 <DialogFooter>
@@ -317,6 +336,12 @@ export default function Services() {
                           <span>R$ {(service.priceInCents / 100).toFixed(2)}</span>
                         </div>
                       </div>
+                      {(service.fichasCount ?? 0) > 0 && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
+                          <Ticket className="h-3 w-3" />
+                          {service.fichasCount} ficha{service.fichasCount !== 1 ? "s" : ""} (plano ilimitado)
+                        </div>
+                      )}
                     </div>
                   );
                 })}

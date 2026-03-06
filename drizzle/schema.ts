@@ -107,6 +107,8 @@ export const barbers = pgTable("barbers", {
   // Comissão personalizada por barbeiro
   commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).default("0.00"),
   bonusAmountInCents: integer("bonus_amount_in_cents").default(0),
+  // Fichas (plano ilimitado)
+  fichaValueInCents: integer("ficha_value_in_cents").notNull().default(0),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -141,6 +143,8 @@ export const services = pgTable("services", {
   description: text("description"),
   durationMinutes: integer("duration_minutes").notNull(),
   priceInCents: integer("price_in_cents").notNull(),
+  // Fichas (peso do serviço no plano ilimitado)
+  fichasCount: integer("fichas_count").notNull().default(0),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -404,3 +408,21 @@ export const commissionPayments = pgTable("commission_payments", {
 
 export type CommissionPayment = typeof commissionPayments.$inferSelect;
 export type InsertCommissionPayment = typeof commissionPayments.$inferInsert;
+
+// ─── Fichas por Serviço (plano ilimitado) ────────────────────────────────────
+
+export const barberFichaRecords = pgTable("barber_ficha_records", {
+  id: serial("id").primaryKey(),
+  barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
+  barberId: integer("barber_id").notNull().references(() => barbers.id, { onDelete: "cascade" }),
+  appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  fichasCount: integer("fichas_count").notNull().default(1),
+  fichaValueInCents: integer("ficha_value_in_cents").notNull().default(0),
+  totalValueInCents: integer("total_value_in_cents").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAppointmentFicha: unique("barber_ficha_records_appointment_unique").on(table.appointmentId),
+}));
+
+export type BarberFichaRecord = typeof barberFichaRecords.$inferSelect;
+export type InsertBarberFichaRecord = typeof barberFichaRecords.$inferInsert;

@@ -120,6 +120,9 @@ export async function registerBarbershop(req: Request, res: Response) {
       })
       .returning();
 
+    // Registra o ownerId na barbearia para suporte a múltiplas barbearias por dono
+    await db.update(barbershops).set({ ownerId: user.id }).where(eq(barbershops.id, barbershop.id));
+
     // Gera session token
     const sessionToken = await sdk.signSession({
       openId: user.id.toString(),

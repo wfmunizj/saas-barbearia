@@ -34,11 +34,14 @@ import {
   Tag,
   Star,
   Users2,
+  Settings,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
+import { trpc } from "@/lib/trpc";
+import { ChevronDown, Plus } from "lucide-react";
 
 // Itens com campo `roles`: quais roles podem ver. undefined = todos.
 const allMenuItems = [
@@ -72,6 +75,12 @@ const allMenuItems = [
     icon: Users2,
     label: "Acesso da Equipe",
     path: "/team-access",
+    roles: ["owner", "admin"],
+  },
+  {
+    icon: Settings,
+    label: "Configurações",
+    path: "/configuracoes",
     roles: ["owner", "admin"],
   },
 ];
@@ -181,6 +190,18 @@ function DashboardLayoutContent({
     item => !item.roles || item.roles.includes(role)
   );
 
+  // Multi-barbearia: lista barbearias do owner
+  const { data: myBarbershops } = trpc.barbershop.myList.useQuery(undefined, {
+    enabled: role === "owner",
+  });
+  const switchMutation = trpc.barbershop.switch.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+  });
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const activeBarbershopId = (user as any)?.barbershopId;
+
   const activeMenuItem = menuItems.find(item => item.path === location);
 
   useEffect(() => {
@@ -276,6 +297,48 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
+
+            {/* BarbershopSwitcher — só para owners */}
+            {role === "owner" && myBarbershops && myBarbershops.length > 0 && !isCollapsed && (
+              <div className="px-2 py-2 border-t mt-auto">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground px-2 mb-1">Barbearia ativa</p>
+                <DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-2 w-full px-2 py-2 rounded-lg hover:bg-accent text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <span className="flex-1 text-left truncate font-medium">
+                        {myBarbershops.find(b => b.id === activeBarbershopId)?.name ?? "Minha Barbearia"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    {myBarbershops.map(b => (
+                      <DropdownMenuItem
+                        key={b.id}
+                        onClick={() => {
+                          if (b.id !== activeBarbershopId) {
+                            switchMutation.mutate({ barbershopId: b.id });
+                          }
+                        }}
+                        className={`cursor-pointer ${b.id === activeBarbershopId ? "font-semibold text-primary" : ""}`}
+                      >
+                        {b.name}
+                        {b.id === activeBarbershopId && (
+                          <span className="ml-auto text-[10px] text-primary">ativa</span>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem
+                      onClick={() => setLocation("/nova-barbearia")}
+                      className="cursor-pointer text-primary font-medium"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nova Barbearia
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </SidebarContent>
 
           <SidebarFooter className="p-3">

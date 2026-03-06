@@ -20,6 +20,8 @@ import Plans from "./pages/Plans";
 import TeamAccess from "./pages/TeamAccess";
 import BarberSummary from "./pages/BarberSummary";
 import MyBarberSummary from "./pages/MyBarberSummary";
+import BarbershopSettings from "./pages/BarbershopSettings";
+import NewBarbershop from "./pages/NewBarbershop";
 
 // Portal do cliente
 import BarbershopPage from "./pages/portal/BarbershopPage";
@@ -87,6 +89,7 @@ function Router() {
       <Route path="/barbers" component={Barbers} />
       <Route path="/barbeiros/:id/resumo" component={BarberSummary} />
       <Route path="/meu-resumo" component={MyBarberSummary} />
+      <Route path="/configuracoes" component={BarbershopSettings} />
       <Route path="/services" component={Services} />
       <Route path="/appointments" component={Appointments} />
       <Route path="/payments" component={Payments} />
@@ -95,6 +98,7 @@ function Router() {
       <Route path="/team-access" component={TeamAccess} />
       <Route path="/plans" component={Plans} />
       <Route path="/subscription" component={Subscription} />
+      <Route path="/nova-barbearia" component={NewBarbershop} />
 
       {/* ─── Portal público da barbearia ──────────────────────── */}
       <Route path="/b/:slug" component={BarbershopPage} />

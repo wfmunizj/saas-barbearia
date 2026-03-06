@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, Pencil, Trash2, AlertCircle, BarChart2, Percent } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, AlertCircle, BarChart2, Percent, Ticket } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ export default function Barbers() {
     specialties: "",
     commissionPercent: 0,
     bonusAmountInCents: 0,
+    fichaValueInCents: 0,
   });
 
   const { data: barbers, isLoading, refetch } = trpc.barbers.list.useQuery();
@@ -65,7 +66,7 @@ export default function Barbers() {
   });
 
   const resetForm = () => {
-    setFormData({ name: "", phone: "", email: "", specialties: "", commissionPercent: 0, bonusAmountInCents: 0 });
+    setFormData({ name: "", phone: "", email: "", specialties: "", commissionPercent: 0, bonusAmountInCents: 0, fichaValueInCents: 0 });
     setEditingBarber(null);
   };
 
@@ -78,6 +79,7 @@ export default function Barbers() {
       specialties: formData.specialties || undefined,
       commissionPercent: formData.commissionPercent,
       bonusAmountInCents: formData.bonusAmountInCents,
+      fichaValueInCents: formData.fichaValueInCents,
     };
     if (editingBarber) {
       updateMutation.mutate({ id: editingBarber.id, ...payload });
@@ -95,6 +97,7 @@ export default function Barbers() {
       specialties: barber.specialties || "",
       commissionPercent: parseFloat(barber.commissionPercent ?? "0"),
       bonusAmountInCents: barber.bonusAmountInCents ?? 0,
+      fichaValueInCents: barber.fichaValueInCents ?? 0,
     });
     setIsDialogOpen(true);
   };
@@ -171,6 +174,21 @@ export default function Barbers() {
                           onChange={e => setFormData({ ...formData, bonusAmountInCents: Math.round(parseFloat(e.target.value || "0") * 100) })}
                           placeholder="Ex: 50.00" />
                       </div>
+                    </div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium mb-3 flex items-center gap-1">
+                      <Ticket className="h-4 w-4" /> Fichas (Plano Ilimitado)
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="fichaValue">Valor por ficha (R$)</Label>
+                      <Input id="fichaValue" type="number" min="0" step="0.01"
+                        value={(formData.fichaValueInCents / 100).toFixed(2)}
+                        onChange={e => setFormData({ ...formData, fichaValueInCents: Math.round(parseFloat(e.target.value || "0") * 100) })}
+                        placeholder="Ex: 5.00" />
+                      <p className="text-xs text-muted-foreground">
+                        Valor em R$ que o barbeiro recebe por cada ficha gerada em atendimentos de plano ilimitado.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -255,7 +273,7 @@ export default function Barbers() {
                           <strong>Especialidades:</strong> {barber.specialties}
                         </p>
                       )}
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2 mt-3 flex-wrap">
                         {commission > 0 && (
                           <Badge variant="secondary" className="text-xs">
                             <Percent className="h-3 w-3 mr-1" />{commission}% comissão
@@ -266,7 +284,13 @@ export default function Barbers() {
                             Bônus R${bonus.toFixed(2).replace(".", ",")}
                           </Badge>
                         )}
-                        {commission === 0 && bonus === 0 && (
+                        {(barber.fichaValueInCents ?? 0) > 0 && (
+                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                            <Ticket className="h-3 w-3 mr-1" />
+                            R${((barber.fichaValueInCents ?? 0) / 100).toFixed(2).replace(".", ",")}/ficha
+                          </Badge>
+                        )}
+                        {commission === 0 && bonus === 0 && (barber.fichaValueInCents ?? 0) === 0 && (
                           <span className="text-xs text-muted-foreground">Sem comissão configurada</span>
                         )}
                       </div>

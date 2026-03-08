@@ -342,7 +342,7 @@ export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
   barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
   clientUserId: integer("client_user_id").notNull().references(() => clientUsers.id, { onDelete: "cascade" }),
-  planId: integer("plan_id").notNull().references(() => plans.id),
+  planId: integer("plan_id").references(() => plans.id, { onDelete: "set null" }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }).unique(),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   status: subscriptionStatusEnum("status").default("trialing").notNull(),

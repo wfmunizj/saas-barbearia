@@ -41,6 +41,7 @@ export default function ClientAccountPage() {
     onSuccess: () => {
       toast.success("Assinatura cancelada.");
       utils.client.me.invalidate();
+      navigate(`/b/${slug}`);
     },
     onError: (err) => toast.error(err.message),
   });

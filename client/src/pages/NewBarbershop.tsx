@@ -22,9 +22,7 @@ export default function NewBarbershop() {
 
   const createMutation = trpc.barbershop.create.useMutation({
     onSuccess: () => {
-      toast.success("Barbearia criada com sucesso! Você está agora no painel da nova barbearia.");
-      utils.auth.me.invalidate();
-      utils.barbershop.get.invalidate();
+      toast.success("Barbearia criada! Use o seletor no menu lateral para acessá-la.");
       utils.barbershop.myList.invalidate();
       navigate("/");
     },

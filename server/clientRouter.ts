@@ -46,6 +46,8 @@ export const clientPortalRouter = router({
           phone: barbershops.phone,
           address: barbershops.address,
           logoUrl: barbershops.logoUrl,
+          primaryColor: barbershops.primaryColor,
+          secondaryColor: barbershops.secondaryColor,
         })
         .from(barbershops)
         .where(and(eq(barbershops.slug, input.slug), eq(barbershops.isActive, true)))

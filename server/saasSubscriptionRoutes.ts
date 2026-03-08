@@ -65,12 +65,18 @@ saasRouter.get("/subscription", async (req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
+  // Checa a subscription de QUALQUER barbearia do mesmo owner (por owner_id).
+  // Isso garante que ao criar barbearias adicionais, o acesso ao sistema é mantido
+  // pela subscription da barbearia principal — SaaS subscription é por conta (owner).
   const rows = await rawSql(db,
     "SELECT ss.*, sp.name as plan_name, sp.max_barbers, sp.price_in_cents " +
     "FROM saas_subscriptions ss " +
     "JOIN saas_plans sp ON sp.id = ss.saas_plan_id " +
-    "WHERE ss.barbershop_id = " + owner.barbershopId + " " +
-    "ORDER BY ss.created_at DESC LIMIT 1"
+    "WHERE ss.barbershop_id IN (" +
+    "  SELECT id FROM barbershops WHERE owner_id = " + owner.id +
+    "  UNION SELECT " + owner.barbershopId +
+    ") " +
+    "ORDER BY ss.status = 'active' DESC, ss.status = 'trialing' DESC, ss.created_at DESC LIMIT 1"
   );
   const sub = rows[0] ?? null;
   if (!sub) return res.json({ subscription: null, canUse: false, daysLeftTrial: null });

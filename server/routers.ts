@@ -12,7 +12,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { clientPortalRouter } from "./clientRouter";
 import {
-  plans, clientUsers, subscriptions, barbers, appointments, services,
+  barbershops, plans, clientUsers, subscriptions, barbers, appointments, services,
   planServices, barberCommissionRecords, commissionPayments, barberFichaRecords,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";

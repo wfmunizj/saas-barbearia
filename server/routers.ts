@@ -1172,6 +1172,20 @@ export const appRouter = router({
         const barbershopId = await getBarbershopId((ctx.user as any).id);
         const db = await import("./db").then(m => m.getDb());
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Bloqueia se houver clientes com assinatura ativa neste plano
+        const [activeRef] = await db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(and(eq(subscriptions.planId, input.id), eq(subscriptions.status, "active")))
+          .limit(1);
+        if (activeRef) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Este plano possui clientes com assinatura ativa. Cancele as assinaturas antes de removê-lo.",
+          });
+        }
+
         await db
           .delete(plans)
           .where(

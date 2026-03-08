@@ -88,6 +88,8 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
   const balanceInCents = balance?.balanceInCents ?? 0;
   const totalEarned = balance?.totalEarnedInCents ?? 0;
   const totalPaid = balance?.totalPaidInCents ?? 0;
+  const totalCommission = balance?.totalCommissionInCents ?? 0;
+  const totalFichasEarned = balance?.totalFichasInCents ?? 0;
 
   function applyPercent(pct: number) {
     const value = Math.round(balanceInCents * pct) / 100;
@@ -200,6 +202,12 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
               <p className="text-xs text-muted-foreground">
                 {balanceInCents > 0 ? "Aguardando pagamento" : "Em dia"}
               </p>
+              {balance && (totalCommission > 0 || totalFichasEarned > 0) && (
+                <div className="text-[10px] text-muted-foreground pt-1 border-t space-y-0.5">
+                  {totalCommission > 0 && <p>Comissão: {fmt(totalCommission)}</p>}
+                  {totalFichasEarned > 0 && <p className="text-amber-500">Fichas: {fmt(totalFichasEarned)}</p>}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -219,6 +227,12 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 <div className="bg-muted/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground">Total gerado</p>
                   <p className="font-bold">{fmt(totalEarned)}</p>
+                  {(totalCommission > 0 || totalFichasEarned > 0) && (
+                    <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
+                      {totalCommission > 0 && <p>Comissão: {fmt(totalCommission)}</p>}
+                      {totalFichasEarned > 0 && <p className="text-amber-500">Fichas: {fmt(totalFichasEarned)}</p>}
+                    </div>
+                  )}
                 </div>
                 <div className="bg-muted/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground">Total pago</p>
@@ -352,44 +366,53 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
           </Card>
         )}
 
-        {/* Fichas no período (plano ilimitado) */}
-        {fichasData && fichasData.totalFichas > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Ticket className="h-4 w-4 text-amber-500" />
-                Fichas no Período (Plano Ilimitado)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 mb-4 text-center text-sm">
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">Total de fichas</p>
-                  <p className="text-2xl font-bold text-amber-600">{fichasData.totalFichas}</p>
-                </div>
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">Valor total</p>
-                  <p className="text-2xl font-bold text-amber-600">{fmt(fichasData.totalValueInCents)}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {fichasData.records.map((r: any) => (
-                  <div key={r.id} className="flex items-center justify-between py-2 border-b last:border-0 text-sm">
-                    <div>
-                      <p className="font-medium">{r.serviceName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-                        {" · "}{r.fichasCount} ficha{r.fichasCount !== 1 ? "s" : ""}
-                        {r.fichaValueInCents > 0 && ` × ${fmt(r.fichaValueInCents)}`}
-                      </p>
-                    </div>
-                    <span className="font-semibold text-amber-600">{fmt(r.totalValueInCents)}</span>
+        {/* Fichas no período (plano ilimitado) — sempre visível */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-amber-500" />
+              Rendimento por Fichas (Plano Ilimitado)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {fichasData && fichasData.totalFichas > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-4 text-center text-sm">
+                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">Total de fichas</p>
+                    <p className="text-2xl font-bold text-amber-600">{fichasData.totalFichas}</p>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">Valor total</p>
+                    <p className="text-2xl font-bold text-amber-600">{fmt(fichasData.totalValueInCents)}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {fichasData.records.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between py-2 border-b last:border-0 text-sm">
+                      <div>
+                        <p className="font-medium">{r.serviceName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(r.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                          {" · "}{r.fichasCount} ficha{r.fichasCount !== 1 ? "s" : ""}
+                          {r.fichaValueInCents > 0 && ` × ${fmt(r.fichaValueInCents)}`}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-amber-600">{fmt(r.totalValueInCents)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhuma ficha gerada no período.{" "}
+                <span className="block text-xs mt-1">
+                  Configure fichas nos serviços e o valor por ficha no cadastro de cada barbeiro.
+                </span>
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Histórico de agendamentos do período */}
         <Card>

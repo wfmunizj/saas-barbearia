@@ -156,8 +156,8 @@ export const appRouter = router({
           isActive: true,
         }).returning();
 
-        // Switch automático para a nova barbearia
-        await db.updateUserBarbershopId(userId, newShop.id);
+        // NÃO fazemos switch automático — owner permanece na barbearia atual.
+        // O switcher no sidebar exibirá a nova barbearia via barbershop.myList.
 
         return newShop;
       }),

@@ -284,14 +284,20 @@ export default function Barbers() {
                             Bônus R${bonus.toFixed(2).replace(".", ",")}
                           </Badge>
                         )}
-                        {(barber.fichaValueInCents ?? 0) > 0 && (
+                        {/* Ficha badge — sempre exibido para visibilidade */}
+                        {(barber.fichaValueInCents ?? 0) > 0 ? (
                           <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
                             <Ticket className="h-3 w-3 mr-1" />
                             R${((barber.fichaValueInCents ?? 0) / 100).toFixed(2).replace(".", ",")}/ficha
                           </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground border-dashed">
+                            <Ticket className="h-3 w-3 mr-1" />
+                            Valor/ficha não definido
+                          </Badge>
                         )}
                         {commission === 0 && bonus === 0 && (barber.fichaValueInCents ?? 0) === 0 && (
-                          <span className="text-xs text-muted-foreground">Sem comissão configurada</span>
+                          <span className="text-xs text-muted-foreground">· sem comissão</span>
                         )}
                       </div>
                     </div>

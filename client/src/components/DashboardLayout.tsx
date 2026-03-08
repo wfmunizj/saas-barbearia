@@ -35,6 +35,7 @@ import {
   Star,
   Users2,
   Settings,
+  BriefcaseBusiness,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -77,12 +78,19 @@ const allMenuItems = [
     path: "/team-access",
     roles: ["owner", "admin"],
   },
+    {
+    icon: Settings,
+    label: "Nova Barbearia",
+    path: "/nova-barbearia",
+    roles: ["owner"],
+  },
   {
     icon: Settings,
     label: "Configurações",
     path: "/configuracoes",
     roles: ["owner", "admin"],
   },
+
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

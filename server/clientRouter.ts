@@ -13,7 +13,7 @@ import {
   appointments, clients, barbers, services,
   barberCommissionRecords, appointmentServices,
 } from "../drizzle/schema";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 import Stripe from "stripe";
 
@@ -177,17 +177,19 @@ export const clientPortalRouter = router({
         appointmentDate: appointments.appointmentDate,
         status: appointments.status,
         barberName: barbers.name,
-        serviceName: services.name,
+        serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
       })
         .from(appointments)
         .innerJoin(barbers, eq(appointments.barberId, barbers.id))
-        .innerJoin(services, eq(appointments.serviceId, services.id))
+        .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+        .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
         .where(
           and(
             eq(appointments.clientId, clientUser.clientId!),
             gte(appointments.appointmentDate, new Date())
           )
-        );
+        )
+        .groupBy(appointments.id, barbers.id);
 
       return {
         user: { id: clientUser.id, name: clientUser.name, email: clientUser.email, phone: clientUser.phone },

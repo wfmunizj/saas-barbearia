@@ -11,9 +11,9 @@ import { getDb } from "./db";
 import {
   barbershops, plans, clientUsers, subscriptions,
   appointments, clients, barbers, services,
-  barberCommissionRecords,
+  barberCommissionRecords, appointmentServices,
 } from "../drizzle/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 import Stripe from "stripe";
 
@@ -201,7 +201,7 @@ export const clientPortalRouter = router({
     .input(z.object({
       slug: z.string(),
       barberId: z.number(),
-      serviceId: z.number(),
+      serviceIds: z.array(z.number()).min(1),
       appointmentDate: z.union([z.string(), z.date()]).transform(v => new Date(v)),
       notes: z.string().optional(),
       useSubscriptionCredit: z.boolean().default(true),
@@ -228,9 +228,18 @@ export const clientPortalRouter = router({
         });
       }
 
-      // Busca serviço para calcular comissão depois
-      const [service] = await db.select({ priceInCents: services.priceInCents })
-        .from(services).where(eq(services.id, input.serviceId)).limit(1);
+      // Busca todos os serviços selecionados e calcula totais
+      const selectedServices = await db
+        .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes })
+        .from(services)
+        .where(and(inArray(services.id, input.serviceIds), eq(services.barbershopId, barbershop.id)));
+
+      if (selectedServices.length !== input.serviceIds.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Serviço inválido" });
+      }
+
+      const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
+      const totalPrice = selectedServices.reduce((sum, s) => sum + s.priceInCents, 0);
 
       // ── Agendamento com crédito de assinatura ─────────────────────────────
       if (input.useSubscriptionCredit && !input.isGuestBooking) {
@@ -287,12 +296,21 @@ export const clientPortalRouter = router({
           barbershopId: barbershop.id,
           clientId: clientUser.clientId!,
           barberId: input.barberId,
-          serviceId: input.serviceId,
+          serviceId: null,
           appointmentDate: input.appointmentDate,
           notes: input.notes,
           status: "confirmed",
           isGuestBooking: false,
         }).returning();
+
+        await db.insert(appointmentServices).values(
+          selectedServices.map(s => ({
+            appointmentId: appointment.id,
+            serviceId: s.id,
+            priceInCents: s.priceInCents,
+            durationMinutes: s.durationMinutes,
+          }))
+        );
 
         // Debita 1 crédito apenas se plano não for ilimitado
         const newCredits = plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1;
@@ -312,13 +330,22 @@ export const clientPortalRouter = router({
           barbershopId: barbershop.id,
           clientId: clientUser.clientId!,
           barberId: input.barberId,
-          serviceId: input.serviceId,
+          serviceId: null,
           appointmentDate: input.appointmentDate,
           notes: input.notes ? `[Para: ${input.guestName}] ${input.notes}` : `Agendamento para: ${input.guestName}`,
           status: "confirmed",
           isGuestBooking: true,
           guestName: input.guestName,
         }).returning();
+
+        await db.insert(appointmentServices).values(
+          selectedServices.map(s => ({
+            appointmentId: appointment.id,
+            serviceId: s.id,
+            priceInCents: s.priceInCents,
+            durationMinutes: s.durationMinutes,
+          }))
+        );
 
         // Busca créditos atuais para retornar no response
         const [sub] = await db.select({ creditsRemaining: subscriptions.creditsRemaining })
@@ -338,27 +365,32 @@ export const clientPortalRouter = router({
           barbershopId: barbershop.id,
           clientId: clientUser.clientId!,
           barberId: input.barberId,
-          serviceId: input.serviceId,
+          serviceId: null,
           appointmentDate: input.appointmentDate,
           notes: input.notes,
           status: "pending",
           isGuestBooking: false,
         }).returning();
 
-        // Busca nome e preço do serviço para o checkout
-        const [svc] = await db.select({ name: services.name, priceInCents: services.priceInCents })
-          .from(services).where(eq(services.id, input.serviceId)).limit(1);
+        await db.insert(appointmentServices).values(
+          selectedServices.map(s => ({
+            appointmentId: appointment.id,
+            serviceId: s.id,
+            priceInCents: s.priceInCents,
+            durationMinutes: s.durationMinutes,
+          }))
+        );
 
         const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
 
         const session = await stripe.checkout.sessions.create({
           mode: "payment",
-          payment_method_types: ["card"],
+          automatic_payment_methods: { enabled: true },
           line_items: [{
             price_data: {
               currency: "brl",
-              unit_amount: svc?.priceInCents ?? 0,
-              product_data: { name: svc?.name ?? "Agendamento" },
+              unit_amount: totalPrice,
+              product_data: { name: `Agendamento — ${selectedServices.map(s => s.name).join(" + ")}` },
             },
             quantity: 1,
           }],
@@ -379,12 +411,21 @@ export const clientPortalRouter = router({
         barbershopId: barbershop.id,
         clientId: clientUser.clientId!,
         barberId: input.barberId,
-        serviceId: input.serviceId,
+        serviceId: null,
         appointmentDate: input.appointmentDate,
         notes: input.notes,
         status: "confirmed",
         isGuestBooking: false,
       }).returning();
+
+      await db.insert(appointmentServices).values(
+        selectedServices.map(s => ({
+          appointmentId: appointment.id,
+          serviceId: s.id,
+          priceInCents: s.priceInCents,
+          durationMinutes: s.durationMinutes,
+        }))
+      );
 
       return { appointment, creditsRemaining: 0, checkoutUrl: null };
     }),

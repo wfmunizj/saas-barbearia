@@ -20,7 +20,7 @@ export default function BookingPage() {
 
   const [step, setStep] = useState<Step>("barber");
   const [selectedBarber, setSelectedBarber] = useState<any>(null);
-  const [selectedService, setSelectedService] = useState<any>(null);
+  const [selectedServices, setSelectedServices] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [notes, setNotes] = useState("");
@@ -42,6 +42,10 @@ export default function BookingPage() {
 
   const primaryColor = barbershop?.primaryColor ?? "#000000";
   const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
+
+  const totalPrice = selectedServices.reduce((sum, s) => sum + (s.priceInCents ?? 0), 0);
+  const totalDuration = selectedServices.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
+  const serviceNames = selectedServices.map(s => s.name).join(", ");
 
   const bookMutation = trpc.client.bookAppointment.useMutation({
     onSuccess: (data) => {
@@ -131,14 +135,14 @@ export default function BookingPage() {
   };
 
   const executeBooking = (method: "in_person" | "stripe" = "in_person") => {
-    if (!selectedBarber || !selectedService || !selectedDate || !selectedTime) return;
+    if (!selectedBarber || selectedServices.length === 0 || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
     const hasSubscription = !!me?.subscription;
     bookMutation.mutate({
       slug,
       barberId: selectedBarber.id,
-      serviceId: selectedService.id,
+      serviceIds: selectedServices.map(s => s.id),
       appointmentDate,
       notes: notes || undefined,
       useSubscriptionCredit: hasSubscription && !isGuestBooking,
@@ -240,13 +244,19 @@ export default function BookingPage() {
         {/* Passo 2: Serviço */}
         {step === "service" && (
           <div className="space-y-3">
-            <h2 className="text-xl font-bold">Escolha o serviço</h2>
+            <h2 className="text-xl font-bold">Escolha o(s) serviço(s)</h2>
             {services_?.map(service => (
               <Card
                 key={service.id}
                 className={`cursor-pointer transition-all hover:shadow-md border-2`}
-                style={{ borderColor: selectedService?.id === service.id ? primaryColor : "transparent" }}
-                onClick={() => setSelectedService(service)}
+                style={{ borderColor: selectedServices.some(s => s.id === service.id) ? primaryColor : "transparent" }}
+                onClick={() => {
+                  setSelectedServices(prev =>
+                    prev.some(s => s.id === service.id)
+                      ? prev.filter(s => s.id !== service.id)
+                      : [...prev, service]
+                  );
+                }}
               >
                 <CardContent className="flex items-center justify-between p-4">
                   <div>
@@ -260,18 +270,25 @@ export default function BookingPage() {
                     <Badge variant="secondary">
                       R$ {(service.priceInCents / 100).toFixed(2).replace(".", ",")}
                     </Badge>
-                    {selectedService?.id === service.id && (
+                    {selectedServices.some(s => s.id === service.id) && (
                       <Check className="h-5 w-5" style={{ color: primaryColor }} />
                     )}
                   </div>
                 </CardContent>
               </Card>
             ))}
+            {selectedServices.length > 0 && (
+              <div className="mt-3 p-2 rounded-lg text-sm text-center" style={{ backgroundColor: `${primaryColor}15` }}>
+                <span className="font-medium">{selectedServices.length} serviço(s)</span>
+                {" · "}{totalDuration} min{" · "}
+                <span className="font-medium">R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}</span>
+              </div>
+            )}
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setStep("barber")}>Voltar</Button>
-              <Button className="flex-1" disabled={!selectedService} onClick={() => setStep("date")}
-                style={selectedService ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
-                Continuar
+              <Button variant="outline" className="flex-1" onClick={() => { setSelectedServices([]); setStep("barber"); }}>Voltar</Button>
+              <Button className="flex-1" disabled={selectedServices.length === 0} onClick={() => { if (selectedServices.length === 0) return; setStep("date"); }}
+                style={selectedServices.length > 0 ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
+                Próximo
               </Button>
             </div>
           </div>
@@ -383,11 +400,24 @@ export default function BookingPage() {
                     <p className="font-semibold">{selectedBarber?.name}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Scissors className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Serviço</p>
-                    <p className="font-semibold">{selectedService?.name}</p>
+                <div className="flex items-start gap-3">
+                  <Scissors className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground">Serviço(s)</p>
+                    <div className="space-y-0.5">
+                      {selectedServices.map(s => (
+                        <div key={s.id} className="flex justify-between text-sm">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-muted-foreground">{s.durationMinutes}min · R$ {(s.priceInCents / 100).toFixed(2).replace(".", ",")}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedServices.length > 1 && (
+                      <div className="flex justify-between text-sm font-semibold border-t mt-1 pt-1">
+                        <span>Total</span>
+                        <span>{totalDuration}min · R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -446,7 +476,7 @@ export default function BookingPage() {
                       </button>
                     </div>
                     <p className="text-xs text-muted-foreground text-center">
-                      Valor: R$ {((selectedService?.priceInCents ?? 0) / 100).toFixed(2).replace(".", ",")}
+                      Valor: R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}
                     </p>
                   </div>
                 )}

@@ -211,7 +211,7 @@ export default function ClientAccountPage() {
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <CalendarIcon className="h-5 w-5 text-muted-foreground shrink-0" />
                     <div className="min-w-0">
-                      <p className="font-semibold truncate">{appt.serviceName}</p>
+                      <p className="font-semibold truncate">{appt.serviceName ?? "—"}</p>
                       <p className="text-sm text-muted-foreground">
                         com {appt.barberName} · {new Date(appt.appointmentDate).toLocaleDateString("pt-BR", {
                           weekday: "short", day: "numeric", month: "short"

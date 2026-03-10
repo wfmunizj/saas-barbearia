@@ -28,6 +28,7 @@ import {
   InsertBarberSchedule,
   barbershops,
   InsertBarbershop,
+  appointmentServices,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -314,7 +315,18 @@ export async function deleteService(id: number, barbershopId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // 1. Busca os agendamentos vinculados a esse serviço
+  // 0. Verifica se o serviço está referenciado em appointment_services (onDelete: restrict)
+  const referencedInJunction = await db
+    .select({ id: appointmentServices.id })
+    .from(appointmentServices)
+    .where(eq(appointmentServices.serviceId, id))
+    .limit(1);
+
+  if (referencedInJunction.length > 0) {
+    return { success: false, error: "Este serviço está associado a agendamentos existentes e não pode ser excluído." };
+  }
+
+  // 1. Busca os agendamentos vinculados a esse serviço (via serviceId legado)
   const serviceAppointments = await db
     .select({ id: appointments.id })
     .from(appointments)
@@ -333,6 +345,8 @@ export async function deleteService(id: number, barbershopId: number) {
   // 4. Remove o serviço
   await db.delete(services)
     .where(and(eq(services.id, id), eq(services.barbershopId, barbershopId)));
+
+  return { success: true };
 }
 
 // ─── Appointments ─────────────────────────────────────────────────────────────

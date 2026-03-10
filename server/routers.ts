@@ -14,6 +14,7 @@ import { clientPortalRouter } from "./clientRouter";
 import {
   barbershops, plans, clientUsers, subscriptions, barbers, appointments, services,
   planServices, barberCommissionRecords, commissionPayments, barberFichaRecords,
+  appointmentServices,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import Stripe from "stripe";
@@ -384,17 +385,19 @@ export const appRouter = router({
           id: appointments.id,
           status: appointments.status,
           appointmentDate: appointments.appointmentDate,
-          serviceName: services.name,
-          servicePrice: services.priceInCents,
+          serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
+          servicePrice: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
         })
           .from(appointments)
-          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+          .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
           .where(and(
             eq(appointments.barberId, input.barberId),
             eq(appointments.barbershopId, barbershopId),
             gte(appointments.appointmentDate, start),
             lte(appointments.appointmentDate, end),
-          ));
+          ))
+          .groupBy(appointments.id, appointments.status, appointments.appointmentDate);
 
         const totalAppointments = appts.length;
         const completedAppointments = appts.filter(a => a.status === "completed").length;
@@ -584,13 +587,15 @@ export const appRouter = router({
               clientId: appointments.clientId,
               commissionPercent: barbers.commissionPercent,
               fichaValueInCents: barbers.fichaValueInCents,
-              priceInCents: services.priceInCents,
-              fichasCount: services.fichasCount,
+              priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
+              fichasCount: sql<number>`COALESCE(SUM(${appointmentServices.fichasCount}), SUM(${services.fichasCount}), 0)`,
             })
               .from(appointments)
               .innerJoin(barbers, eq(appointments.barberId, barbers.id))
-              .innerJoin(services, eq(appointments.serviceId, services.id))
+              .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+              .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
               .where(and(eq(appointments.id, id), eq(appointments.barbershopId, barbershopId)))
+              .groupBy(appointments.id, barbers.id)
               .limit(1);
 
             if (appt) {
@@ -653,13 +658,15 @@ export const appRouter = router({
           id: appointments.id,
           barberId: appointments.barberId,
           commissionPercent: barbers.commissionPercent,
-          priceInCents: services.priceInCents,
+          priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
           status: appointments.status,
         })
           .from(appointments)
           .innerJoin(barbers, eq(appointments.barberId, barbers.id))
-          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+          .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
           .where(and(eq(appointments.id, input.appointmentId), eq(appointments.barbershopId, barbershopId)))
+          .groupBy(appointments.id, barbers.id)
           .limit(1);
 
         if (!appt) throw new TRPCError({ code: "NOT_FOUND" });
@@ -858,12 +865,14 @@ export const appRouter = router({
           fichaValueInCents: barberFichaRecords.fichaValueInCents,
           totalValueInCents: barberFichaRecords.totalValueInCents,
           createdAt: barberFichaRecords.createdAt,
-          serviceName: services.name,
+          serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
         })
           .from(barberFichaRecords)
           .innerJoin(appointments, eq(barberFichaRecords.appointmentId, appointments.id))
-          .innerJoin(services, eq(appointments.serviceId, services.id))
+          .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+          .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
           .where(and(...conditions))
+          .groupBy(barberFichaRecords.id)
           .orderBy(sql`${barberFichaRecords.createdAt} DESC`);
 
         const totalFichas = records.reduce((sum, r) => sum + (r.fichasCount ?? 0), 0);

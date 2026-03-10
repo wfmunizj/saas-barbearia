@@ -160,7 +160,7 @@ export const appointments = pgTable("appointments", {
   barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
   clientId: integer("client_id").notNull().references(() => clients.id),
   barberId: integer("barber_id").notNull().references(() => barbers.id),
-  serviceId: integer("service_id").notNull().references(() => services.id),
+  serviceId: integer("service_id").references(() => services.id),
   appointmentDate: timestamp("appointment_date").notNull(),
   status: appointmentStatusEnum("status").default("pending").notNull(),
   notes: text("notes"),
@@ -177,6 +177,22 @@ export const appointments = pgTable("appointments", {
 
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = typeof appointments.$inferInsert;
+
+// ─── Serviços do Agendamento (multi-serviço) ──────────────────────────────────
+
+export const appointmentServices = pgTable("appointment_services", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  serviceId: integer("service_id").notNull().references(() => services.id, { onDelete: "restrict" }),
+  priceInCents: integer("price_in_cents").notNull(),
+  durationMinutes: integer("duration_minutes").notNull(),
+  fichasCount: integer("fichas_count").notNull().default(0),
+}, (table) => ({
+  uniqueAppointmentService: unique("appointment_services_unique").on(table.appointmentId, table.serviceId),
+}));
+
+export type AppointmentService = typeof appointmentServices.$inferSelect;
+export type InsertAppointmentService = typeof appointmentServices.$inferInsert;
 
 // ─── Pagamentos ───────────────────────────────────────────────────────────────
 

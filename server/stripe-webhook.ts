@@ -158,13 +158,18 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
+  // Determine payment method — session.payment_method_types is null when
+  // automatic_payment_methods is enabled; fall back to checking payment_method_options
+  const pmType = session.payment_method_types?.[0]
+    ?? (session.payment_method_options?.pix ? "pix" : "card");
+
   await db.insert(payments).values({
     appointmentId,
     clientId,
     barbershopId,
     amountInCents: session.amount_total || 0,
     status: "completed",
-    paymentMethod: session.payment_method_types?.[0] || "card",
+    paymentMethod: pmType,
     stripePaymentIntentId: (session.payment_intent as string) ?? undefined,
     stripeSessionId: session.id,
   });

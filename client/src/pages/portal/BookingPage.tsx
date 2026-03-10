@@ -31,13 +31,17 @@ export default function BookingPage() {
   const [isGuestBooking, setIsGuestBooking] = useState(false);
   const [guestName, setGuestName] = useState("");
 
+  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
   const { data: me } = trpc.client.me.useQuery({ slug });
   const { data: barbers_ } = trpc.client.getBarbers.useQuery({ slug });
   const { data: services_ } = trpc.client.getServices.useQuery({ slug });
-  const { data: slots } = trpc.client.getAvailableSlots.useQuery(
+  const { data: slots, isLoading: slotsLoading } = trpc.client.getAvailableSlots.useQuery(
     { slug, barberId: selectedBarber?.id ?? 0, date: selectedDate },
     { enabled: !!selectedBarber && !!selectedDate }
   );
+
+  const primaryColor = barbershop?.primaryColor ?? "#000000";
+  const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const bookMutation = trpc.client.bookAppointment.useMutation({
     onSuccess: () => {
@@ -57,12 +61,16 @@ export default function BookingPage() {
   // Redireciona para login se não autenticado
   if (!me?.user) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4"
+        style={{ "--portal-primary": primaryColor, "--portal-secondary": secondaryColor } as React.CSSProperties}>
         <Card className="w-full max-w-sm text-center p-6 space-y-4">
-          <Scissors className="h-12 w-12 mx-auto text-primary" />
+          <div className="rounded-2xl p-4 mx-auto w-fit shadow-lg" style={{ backgroundColor: primaryColor }}>
+            <Scissors className="h-8 w-8" style={{ color: secondaryColor }} />
+          </div>
           <h2 className="text-xl font-bold">Faça login para agendar</h2>
           <p className="text-muted-foreground text-sm">Você precisa ter uma conta para agendar.</p>
-          <Button className="w-full" onClick={() => navigate(`/b/${slug}/login?redirect=agendar`)}>
+          <Button className="w-full" style={{ backgroundColor: primaryColor, color: secondaryColor }}
+            onClick={() => navigate(`/b/${slug}/login?redirect=agendar`)}>
             Entrar
           </Button>
           <Button variant="outline" className="w-full" onClick={() => navigate(`/b/${slug}/cadastro?redirect=agendar`)}>
@@ -91,6 +99,12 @@ export default function BookingPage() {
   })();
 
   const isUnlimitedPlan = (me?.subscription?.plan as any)?.isUnlimited ?? false;
+
+  // Label dinâmico dos dias permitidos
+  const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const planDayLabel = allowedDaysOfWeek
+    ? allowedDaysOfWeek.map(d => dayNames[d]).join(", ")
+    : null;
 
   // Gera próximos 30 dias filtrando por dias permitidos e sem domingo
   const availableDates = Array.from({ length: 30 }, (_, i) => {
@@ -141,14 +155,18 @@ export default function BookingPage() {
   const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{
+      "--portal-primary": primaryColor,
+      "--portal-secondary": secondaryColor,
+    } as React.CSSProperties}>
       {/* Header */}
-      <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-40">
+      <header className="sticky top-0 z-40 shadow-sm" style={{ backgroundColor: primaryColor }}>
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}
+            style={{ color: secondaryColor }} className="hover:opacity-80">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-bold">Agendar</h1>
+          <h1 className="font-bold" style={{ color: secondaryColor }}>Agendar</h1>
         </div>
       </header>
 
@@ -158,18 +176,19 @@ export default function BookingPage() {
           <div className="flex gap-2">
             {steps.map((s, i) => (
               <div key={s.key} className="flex items-center gap-1 flex-1">
-                <div className={`h-2 flex-1 rounded-full transition-colors ${
-                  i <= currentStepIndex ? "bg-primary" : "bg-muted"
-                }`} />
+                <div
+                  className={`h-2 flex-1 rounded-full transition-colors ${i > currentStepIndex ? "bg-muted" : ""}`}
+                  style={{ backgroundColor: i <= currentStepIndex ? primaryColor : undefined }}
+                />
               </div>
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-2">
             Passo {currentStepIndex + 1} de {steps.length}: <span className="font-medium">{steps[currentStepIndex].label}</span>
           </p>
-          {allowedDaysOfWeek && (
+          {planDayLabel && (
             <p className="text-xs text-amber-600 mt-1">
-              Seu plano permite agendamentos apenas de Terça a Quinta.
+              Seu plano permite agendamentos apenas: {planDayLabel}.
             </p>
           )}
         </div>
@@ -184,14 +203,14 @@ export default function BookingPage() {
             {barbers_?.map(barber => (
               <Card
                 key={barber.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  selectedBarber?.id === barber.id ? "border-primary border-2" : ""
-                }`}
+                className={`cursor-pointer transition-all hover:shadow-md border-2`}
+                style={{ borderColor: selectedBarber?.id === barber.id ? primaryColor : "transparent" }}
                 onClick={() => setSelectedBarber(barber)}
               >
                 <CardContent className="flex items-center gap-4 p-4">
-                  <div className="bg-muted rounded-full h-12 w-12 flex items-center justify-center">
-                    <User className="h-6 w-6 text-muted-foreground" />
+                  <div className="rounded-full h-12 w-12 flex items-center justify-center text-base font-bold shrink-0"
+                    style={{ backgroundColor: primaryColor, color: secondaryColor }}>
+                    {barber.name.split(" ").slice(0, 2).map((n: string) => n[0].toUpperCase()).join("")}
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold">{barber.name}</p>
@@ -200,12 +219,13 @@ export default function BookingPage() {
                     )}
                   </div>
                   {selectedBarber?.id === barber.id && (
-                    <Check className="h-5 w-5 text-primary" />
+                    <Check className="h-5 w-5" style={{ color: primaryColor }} />
                   )}
                 </CardContent>
               </Card>
             ))}
-            <Button className="w-full" disabled={!selectedBarber} onClick={() => setStep("service")}>
+            <Button className="w-full" disabled={!selectedBarber} onClick={() => setStep("service")}
+              style={selectedBarber ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
               Continuar
             </Button>
           </div>
@@ -218,9 +238,8 @@ export default function BookingPage() {
             {services_?.map(service => (
               <Card
                 key={service.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  selectedService?.id === service.id ? "border-primary border-2" : ""
-                }`}
+                className={`cursor-pointer transition-all hover:shadow-md border-2`}
+                style={{ borderColor: selectedService?.id === service.id ? primaryColor : "transparent" }}
                 onClick={() => setSelectedService(service)}
               >
                 <CardContent className="flex items-center justify-between p-4">
@@ -236,7 +255,7 @@ export default function BookingPage() {
                       R$ {(service.priceInCents / 100).toFixed(2).replace(".", ",")}
                     </Badge>
                     {selectedService?.id === service.id && (
-                      <Check className="h-5 w-5 text-primary" />
+                      <Check className="h-5 w-5" style={{ color: primaryColor }} />
                     )}
                   </div>
                 </CardContent>
@@ -244,7 +263,10 @@ export default function BookingPage() {
             ))}
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep("barber")}>Voltar</Button>
-              <Button className="flex-1" disabled={!selectedService} onClick={() => setStep("date")}>Continuar</Button>
+              <Button className="flex-1" disabled={!selectedService} onClick={() => setStep("date")}
+                style={selectedService ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
+                Continuar
+              </Button>
             </div>
           </div>
         )}
@@ -265,13 +287,18 @@ export default function BookingPage() {
                 const dayName = d.toLocaleDateString("pt-BR", { weekday: "short" });
                 const dayNum = d.getDate();
                 const month = d.toLocaleDateString("pt-BR", { month: "short" });
+                const isSelected = selectedDate === date;
                 return (
                   <button
                     key={date}
                     onClick={() => setSelectedDate(date)}
-                    className={`p-3 rounded-lg border text-center transition-all hover:border-primary ${
-                      selectedDate === date ? "border-primary bg-primary text-primary-foreground" : ""
-                    }`}
+                    className={`p-3 rounded-lg border-2 text-center transition-all`}
+                    style={isSelected
+                      ? { backgroundColor: primaryColor, color: secondaryColor, borderColor: primaryColor }
+                      : { borderColor: "transparent" }
+                    }
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = primaryColor; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = "transparent"; }}
                   >
                     <p className="text-xs capitalize">{dayName}</p>
                     <p className="text-xl font-bold">{dayNum}</p>
@@ -282,7 +309,10 @@ export default function BookingPage() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep("service")}>Voltar</Button>
-              <Button className="flex-1" disabled={!selectedDate} onClick={() => setStep("time")}>Continuar</Button>
+              <Button className="flex-1" disabled={!selectedDate} onClick={() => setStep("time")}
+                style={selectedDate ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
+                Continuar
+              </Button>
             </div>
           </div>
         )}
@@ -291,27 +321,45 @@ export default function BookingPage() {
         {step === "time" && (
           <div className="space-y-3">
             <h2 className="text-xl font-bold">Escolha o horário</h2>
-            <div className="grid grid-cols-4 gap-2">
-              {slots?.map(slot => (
-                <button
-                  key={slot.time}
-                  disabled={!slot.available}
-                  onClick={() => setSelectedTime(slot.time)}
-                  className={`p-3 rounded-lg border text-sm font-medium transition-all ${
-                    !slot.available
-                      ? "opacity-30 cursor-not-allowed bg-muted"
-                      : selectedTime === slot.time
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "hover:border-primary"
-                  }`}
-                >
-                  {slot.time}
-                </button>
-              ))}
-            </div>
+            {slotsLoading ? (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="h-12 bg-muted rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {slots?.map(slot => {
+                  const isSelected = selectedTime === slot.time;
+                  return (
+                    <button
+                      key={slot.time}
+                      disabled={!slot.available}
+                      onClick={() => setSelectedTime(slot.time)}
+                      className={`p-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                        !slot.available ? "opacity-30 cursor-not-allowed bg-muted" : ""
+                      }`}
+                      style={slot.available
+                        ? isSelected
+                          ? { backgroundColor: primaryColor, color: secondaryColor, borderColor: primaryColor }
+                          : { borderColor: "transparent" }
+                        : {}
+                      }
+                      onMouseEnter={e => { if (slot.available && !isSelected) e.currentTarget.style.borderColor = primaryColor; }}
+                      onMouseLeave={e => { if (slot.available && !isSelected) e.currentTarget.style.borderColor = "transparent"; }}
+                    >
+                      {slot.time}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep("date")}>Voltar</Button>
-              <Button className="flex-1" disabled={!selectedTime} onClick={() => setStep("confirm")}>Continuar</Button>
+              <Button className="flex-1" disabled={!selectedTime} onClick={() => setStep("confirm")}
+                style={selectedTime ? { backgroundColor: primaryColor, color: secondaryColor } : {}}>
+                Continuar
+              </Button>
             </div>
           </div>
         )}
@@ -391,6 +439,7 @@ export default function BookingPage() {
                 className="flex-1"
                 onClick={handleConfirmClick}
                 disabled={isBooking || (!isUnlimitedPlan && !!me?.subscription && creditsRemaining <= 0 && !isGuestBooking)}
+                style={{ backgroundColor: primaryColor, color: secondaryColor }}
               >
                 {isBooking ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Agendando...</> : "Confirmar"}
               </Button>
@@ -441,6 +490,7 @@ export default function BookingPage() {
                 </Button>
                 <Button
                   className="flex-1"
+                  style={{ backgroundColor: primaryColor, color: secondaryColor }}
                   onClick={() => {
                     setIsGuestBooking(false);
                     setShowGuestDialog(false);
@@ -458,6 +508,7 @@ export default function BookingPage() {
                 <Button
                   className="flex-1"
                   disabled={!guestName.trim()}
+                  style={{ backgroundColor: primaryColor, color: secondaryColor }}
                   onClick={() => handleGuestDialogConfirm(true)}
                 >
                   Confirmar

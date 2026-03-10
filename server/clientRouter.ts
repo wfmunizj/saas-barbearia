@@ -232,13 +232,12 @@ export const clientPortalRouter = router({
       const selectedServices = await db
         .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes })
         .from(services)
-        .where(and(inArray(services.id, input.serviceIds), eq(services.barbershopId, barbershop.id)));
+        .where(and(inArray(services.id, input.serviceIds), eq(services.barbershopId, barbershop.id), eq(services.isActive, true)));
 
       if (selectedServices.length !== input.serviceIds.length) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Serviço inválido" });
       }
 
-      const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
       const totalPrice = selectedServices.reduce((sum, s) => sum + s.priceInCents, 0);
 
       // ── Agendamento com crédito de assinatura ─────────────────────────────
@@ -291,26 +290,30 @@ export const clientPortalRouter = router({
           });
         }
 
-        // Cria o agendamento
-        const [appointment] = await db.insert(appointments).values({
-          barbershopId: barbershop.id,
-          clientId: clientUser.clientId!,
-          barberId: input.barberId,
-          serviceId: null,
-          appointmentDate: input.appointmentDate,
-          notes: input.notes,
-          status: "confirmed",
-          isGuestBooking: false,
-        }).returning();
+        // Cria o agendamento (atômico: appointment + appointmentServices)
+        const [appointment] = await db.transaction(async (tx) => {
+          const [appt] = await tx.insert(appointments).values({
+            barbershopId: barbershop.id,
+            clientId: clientUser.clientId!,
+            barberId: input.barberId,
+            serviceId: null,
+            appointmentDate: input.appointmentDate,
+            notes: input.notes,
+            status: "confirmed",
+            isGuestBooking: false,
+          }).returning();
 
-        await db.insert(appointmentServices).values(
-          selectedServices.map(s => ({
-            appointmentId: appointment.id,
-            serviceId: s.id,
-            priceInCents: s.priceInCents,
-            durationMinutes: s.durationMinutes,
-          }))
-        );
+          await tx.insert(appointmentServices).values(
+            selectedServices.map(s => ({
+              appointmentId: appt.id,
+              serviceId: s.id,
+              priceInCents: s.priceInCents,
+              durationMinutes: s.durationMinutes,
+            }))
+          );
+
+          return [appt];
+        });
 
         // Debita 1 crédito apenas se plano não for ilimitado
         const newCredits = plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1;
@@ -326,26 +329,30 @@ export const clientPortalRouter = router({
       // ── Agendamento em nome de outra pessoa (pai → filho) ─────────────────
       // NÃO debita crédito do titular
       if (input.isGuestBooking) {
-        const [appointment] = await db.insert(appointments).values({
-          barbershopId: barbershop.id,
-          clientId: clientUser.clientId!,
-          barberId: input.barberId,
-          serviceId: null,
-          appointmentDate: input.appointmentDate,
-          notes: input.notes ? `[Para: ${input.guestName}] ${input.notes}` : `Agendamento para: ${input.guestName}`,
-          status: "confirmed",
-          isGuestBooking: true,
-          guestName: input.guestName,
-        }).returning();
+        const [appointment] = await db.transaction(async (tx) => {
+          const [appt] = await tx.insert(appointments).values({
+            barbershopId: barbershop.id,
+            clientId: clientUser.clientId!,
+            barberId: input.barberId,
+            serviceId: null,
+            appointmentDate: input.appointmentDate,
+            notes: input.notes ? `[Para: ${input.guestName}] ${input.notes}` : `Agendamento para: ${input.guestName}`,
+            status: "confirmed",
+            isGuestBooking: true,
+            guestName: input.guestName,
+          }).returning();
 
-        await db.insert(appointmentServices).values(
-          selectedServices.map(s => ({
-            appointmentId: appointment.id,
-            serviceId: s.id,
-            priceInCents: s.priceInCents,
-            durationMinutes: s.durationMinutes,
-          }))
-        );
+          await tx.insert(appointmentServices).values(
+            selectedServices.map(s => ({
+              appointmentId: appt.id,
+              serviceId: s.id,
+              priceInCents: s.priceInCents,
+              durationMinutes: s.durationMinutes,
+            }))
+          );
+
+          return [appt];
+        });
 
         // Busca créditos atuais para retornar no response
         const [sub] = await db.select({ creditsRemaining: subscriptions.creditsRemaining })
@@ -360,26 +367,31 @@ export const clientPortalRouter = router({
       // in_person: confirma direto; stripe: gera checkout one-time e retorna URL
 
       if (input.paymentMethod === "stripe") {
-        // Cria agendamento pendente (será confirmado pelo webhook após pagamento)
-        const [appointment] = await db.insert(appointments).values({
-          barbershopId: barbershop.id,
-          clientId: clientUser.clientId!,
-          barberId: input.barberId,
-          serviceId: null,
-          appointmentDate: input.appointmentDate,
-          notes: input.notes,
-          status: "pending",
-          isGuestBooking: false,
-        }).returning();
+        // Cria agendamento pendente (atômico: appointment + appointmentServices)
+        // Será confirmado pelo webhook após pagamento
+        const [appointment] = await db.transaction(async (tx) => {
+          const [appt] = await tx.insert(appointments).values({
+            barbershopId: barbershop.id,
+            clientId: clientUser.clientId!,
+            barberId: input.barberId,
+            serviceId: null,
+            appointmentDate: input.appointmentDate,
+            notes: input.notes,
+            status: "pending",
+            isGuestBooking: false,
+          }).returning();
 
-        await db.insert(appointmentServices).values(
-          selectedServices.map(s => ({
-            appointmentId: appointment.id,
-            serviceId: s.id,
-            priceInCents: s.priceInCents,
-            durationMinutes: s.durationMinutes,
-          }))
-        );
+          await tx.insert(appointmentServices).values(
+            selectedServices.map(s => ({
+              appointmentId: appt.id,
+              serviceId: s.id,
+              priceInCents: s.priceInCents,
+              durationMinutes: s.durationMinutes,
+            }))
+          );
+
+          return [appt];
+        });
 
         const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
 
@@ -406,26 +418,30 @@ export const clientPortalRouter = router({
         return { appointment, creditsRemaining: 0, checkoutUrl: session.url };
       }
 
-      // Pagamento na barbearia → confirma automaticamente (sem pending)
-      const [appointment] = await db.insert(appointments).values({
-        barbershopId: barbershop.id,
-        clientId: clientUser.clientId!,
-        barberId: input.barberId,
-        serviceId: null,
-        appointmentDate: input.appointmentDate,
-        notes: input.notes,
-        status: "confirmed",
-        isGuestBooking: false,
-      }).returning();
+      // Pagamento na barbearia → confirma automaticamente (atômico: appointment + appointmentServices)
+      const [appointment] = await db.transaction(async (tx) => {
+        const [appt] = await tx.insert(appointments).values({
+          barbershopId: barbershop.id,
+          clientId: clientUser.clientId!,
+          barberId: input.barberId,
+          serviceId: null,
+          appointmentDate: input.appointmentDate,
+          notes: input.notes,
+          status: "confirmed",
+          isGuestBooking: false,
+        }).returning();
 
-      await db.insert(appointmentServices).values(
-        selectedServices.map(s => ({
-          appointmentId: appointment.id,
-          serviceId: s.id,
-          priceInCents: s.priceInCents,
-          durationMinutes: s.durationMinutes,
-        }))
-      );
+        await tx.insert(appointmentServices).values(
+          selectedServices.map(s => ({
+            appointmentId: appt.id,
+            serviceId: s.id,
+            priceInCents: s.priceInCents,
+            durationMinutes: s.durationMinutes,
+          }))
+        );
+
+        return [appt];
+      });
 
       return { appointment, creditsRemaining: 0, checkoutUrl: null };
     }),

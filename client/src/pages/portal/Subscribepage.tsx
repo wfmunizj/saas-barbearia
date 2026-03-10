@@ -2,7 +2,7 @@ import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Star, DollarSign, Loader2, CheckCircle2, CreditCard } from "lucide-react";
+import { ArrowLeft, Star, DollarSign, Loader2, CheckCircle2, CreditCard, Infinity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,10 @@ export default function SubscribePage() {
 
   const { data: me } = trpc.client.me.useQuery({ slug });
   const { data: plans, isLoading } = trpc.client.getPlans.useQuery({ slug });
+  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+
+  const primaryColor = barbershop?.primaryColor ?? "#000000";
+  const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const plan = plans?.find(p => p.id === parseInt(planId));
 
@@ -57,36 +61,50 @@ export default function SubscribePage() {
   }
 
   const hasActiveSub = !!me?.subscription;
+  const isUnlimited = (plan as any)?.isUnlimited ?? false;
 
   function handleSubscribe() {
     setIsRedirecting(true);
     checkoutMutation.mutate({ slug, planId: plan!.id });
   }
 
-  const benefits = [
-    `${plan.creditsPerMonth} agendamento${plan.creditsPerMonth > 1 ? "s" : ""} por mês incluído${plan.creditsPerMonth > 1 ? "s" : ""}`,
-    "Renovação automática mensal",
-    "Cancele quando quiser",
-    "Créditos expiram no final do mês",
-  ];
+  const benefits = isUnlimited
+    ? [
+        "Agendamentos ilimitados por mês",
+        "Renovação automática mensal",
+        "Cancele quando quiser",
+      ]
+    : [
+        `${plan.creditsPerMonth} agendamento${plan.creditsPerMonth > 1 ? "s" : ""} por mês incluído${plan.creditsPerMonth > 1 ? "s" : ""}`,
+        "Renovação automática mensal",
+        "Cancele quando quiser",
+        "Créditos expiram no final do mês",
+      ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-40">
+    <div className="min-h-screen bg-background" style={{
+      "--portal-primary": primaryColor,
+      "--portal-secondary": secondaryColor,
+    } as React.CSSProperties}>
+      <header className="sticky top-0 z-40 shadow-sm" style={{ backgroundColor: primaryColor }}>
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}
+            style={{ color: secondaryColor }} className="hover:opacity-80">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-bold">Assinar Plano</h1>
+          <h1 className="font-bold" style={{ color: secondaryColor }}>Assinar Plano</h1>
         </div>
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-10 space-y-6">
         {/* Card do plano */}
-        <Card className="border-2 border-primary">
+        <Card className="border-2" style={{ borderColor: primaryColor }}>
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-yellow-500" />
+              {isUnlimited
+                ? <Infinity className="h-5 w-5 text-blue-500" />
+                : <Star className="h-5 w-5 text-yellow-500" />
+              }
               <CardTitle>{plan.name}</CardTitle>
             </div>
             {plan.description && (
@@ -100,6 +118,18 @@ export default function SubscribePage() {
                 R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}
               </span>
               <span className="text-muted-foreground">/mês</span>
+            </div>
+
+            {/* Destaque de créditos */}
+            <div className="flex items-center gap-2 py-2 px-3 rounded-lg"
+              style={{ backgroundColor: `${primaryColor}15` }}>
+              {isUnlimited ? (
+                <><Infinity className="h-5 w-5" style={{ color: primaryColor }} />
+                <span className="font-semibold" style={{ color: primaryColor }}>Agendamentos ilimitados</span></>
+              ) : (
+                <><Star className="h-5 w-5 text-yellow-500" />
+                <span className="font-semibold">{plan.creditsPerMonth} agendamento{plan.creditsPerMonth > 1 ? "s" : ""} por mês</span></>
+              )}
             </div>
 
             <div className="space-y-2 pt-2">
@@ -137,6 +167,7 @@ export default function SubscribePage() {
             className="w-full h-12 text-base"
             onClick={handleSubscribe}
             disabled={isRedirecting || checkoutMutation.isPending}
+            style={{ backgroundColor: primaryColor, color: secondaryColor }}
           >
             {isRedirecting || checkoutMutation.isPending ? (
               <>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,10 @@ export function ClientLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
+
+  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const primaryColor = barbershop?.primaryColor ?? "#000000";
+  const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,14 +50,24 @@ export function ClientLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4"
+      style={{ "--portal-primary": primaryColor, "--portal-secondary": secondaryColor } as React.CSSProperties}>
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="bg-primary rounded-2xl p-4 shadow-lg">
-              <Scissors className="h-8 w-8 text-primary-foreground" />
-            </div>
+            {barbershop?.logoUrl ? (
+              <div className="rounded-2xl p-3 shadow-lg" style={{ backgroundColor: primaryColor }}>
+                <img src={barbershop.logoUrl} className="h-10 w-10 object-contain" alt={barbershop.name} />
+              </div>
+            ) : (
+              <div className="rounded-2xl p-4 shadow-lg" style={{ backgroundColor: primaryColor }}>
+                <Scissors className="h-8 w-8" style={{ color: secondaryColor }} />
+              </div>
+            )}
           </div>
+          {barbershop?.name && (
+            <p className="text-base font-semibold">{barbershop.name}</p>
+          )}
           <h1 className="text-2xl font-bold">Entrar</h1>
           <p className="text-sm text-muted-foreground">Acesse sua conta para agendar</p>
         </div>
@@ -80,7 +95,8 @@ export function ClientLoginPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading}
+                style={{ backgroundColor: primaryColor, color: secondaryColor }}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
               </Button>
             </form>
@@ -88,7 +104,8 @@ export function ClientLoginPage() {
         </Card>
         <p className="text-center text-sm text-muted-foreground">
           Não tem conta?{" "}
-          <button onClick={() => navigate(`/b/${slug}/cadastro`)} className="text-primary hover:underline font-medium">
+          <button onClick={() => navigate(`/b/${slug}/cadastro`)} className="font-medium hover:underline"
+            style={{ color: primaryColor }}>
             Criar conta
           </button>
         </p>
@@ -113,6 +130,10 @@ export function ClientRegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
+
+  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const primaryColor = barbershop?.primaryColor ?? "#000000";
+  const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,14 +174,24 @@ export function ClientRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4"
+      style={{ "--portal-primary": primaryColor, "--portal-secondary": secondaryColor } as React.CSSProperties}>
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="bg-primary rounded-2xl p-4 shadow-lg">
-              <Scissors className="h-8 w-8 text-primary-foreground" />
-            </div>
+            {barbershop?.logoUrl ? (
+              <div className="rounded-2xl p-3 shadow-lg" style={{ backgroundColor: primaryColor }}>
+                <img src={barbershop.logoUrl} className="h-10 w-10 object-contain" alt={barbershop.name} />
+              </div>
+            ) : (
+              <div className="rounded-2xl p-4 shadow-lg" style={{ backgroundColor: primaryColor }}>
+                <Scissors className="h-8 w-8" style={{ color: secondaryColor }} />
+              </div>
+            )}
           </div>
+          {barbershop?.name && (
+            <p className="text-base font-semibold">{barbershop.name}</p>
+          )}
           <h1 className="text-2xl font-bold">Criar Conta</h1>
           <p className="text-sm text-muted-foreground">Cadastre-se para agendar</p>
         </div>
@@ -202,7 +233,8 @@ export function ClientRegisterPage() {
                 <Input type={showPassword ? "text" : "password"} placeholder="Repita a senha" required
                   value={formData.confirmPassword} onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })} />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading}
+                style={{ backgroundColor: primaryColor, color: secondaryColor }}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Criando conta...</> : "Criar Conta"}
               </Button>
             </form>
@@ -210,8 +242,14 @@ export function ClientRegisterPage() {
         </Card>
         <p className="text-center text-sm text-muted-foreground">
           Já tem conta?{" "}
-          <button onClick={() => navigate(`/b/${slug}/login`)} className="text-primary hover:underline font-medium">
+          <button onClick={() => navigate(`/b/${slug}/login`)} className="font-medium hover:underline"
+            style={{ color: primaryColor }}>
             Entrar
+          </button>
+        </p>
+        <p className="text-center">
+          <button onClick={() => navigate(`/b/${slug}`)} className="text-sm text-muted-foreground hover:underline">
+            ← Voltar para a barbearia
           </button>
         </p>
       </div>

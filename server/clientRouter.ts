@@ -232,7 +232,7 @@ export const clientPortalRouter = router({
 
       // Busca todos os serviços selecionados e calcula totais
       const selectedServices = await db
-        .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes })
+        .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes, fichasCount: services.fichasCount })
         .from(services)
         .where(and(inArray(services.id, input.serviceIds), eq(services.barbershopId, barbershop.id), eq(services.isActive, true)));
 
@@ -311,6 +311,7 @@ export const clientPortalRouter = router({
               serviceId: s.id,
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
+              fichasCount: s.fichasCount,
             }))
           );
 
@@ -350,6 +351,7 @@ export const clientPortalRouter = router({
               serviceId: s.id,
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
+              fichasCount: s.fichasCount,
             }))
           );
 
@@ -389,6 +391,7 @@ export const clientPortalRouter = router({
               serviceId: s.id,
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
+              fichasCount: s.fichasCount,
             }))
           );
 
@@ -439,6 +442,7 @@ export const clientPortalRouter = router({
             serviceId: s.id,
             priceInCents: s.priceInCents,
             durationMinutes: s.durationMinutes,
+            fichasCount: s.fichasCount,
           }))
         );
 

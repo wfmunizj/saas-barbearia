@@ -588,7 +588,7 @@ export const appRouter = router({
               commissionPercent: barbers.commissionPercent,
               fichaValueInCents: barbers.fichaValueInCents,
               priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
-              fichasCount: sql<number>`COALESCE(SUM(${services.fichasCount}), 0)`,
+              fichasCount: sql<number>`COALESCE(SUM(${appointmentServices.fichasCount}), SUM(${services.fichasCount}), 0)`,
             })
               .from(appointments)
               .innerJoin(barbers, eq(appointments.barberId, barbers.id))

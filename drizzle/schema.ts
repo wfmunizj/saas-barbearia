@@ -38,6 +38,9 @@ export const barbershops = pgTable("barbershops", {
   isActive: boolean("is_active").default(true).notNull(),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  // Stripe Connect (recebimentos diretos + taxa de plataforma)
+  stripeConnectAccountId: varchar("stripe_connect_account_id", { length: 255 }),
+  stripeConnectStatus: varchar("stripe_connect_status", { length: 50 }), // 'pending' | 'active' | 'restricted'
   // WhatsApp / Evolution API
   whatsappInstanceName: varchar("whatsapp_instance_name", { length: 255 }),
   whatsappApiUrl: text("whatsapp_api_url"),

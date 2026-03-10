@@ -18,6 +18,7 @@ import { users, barbershops } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { barberUserRouter } from "../barberUserRoutes";
 import { saasRouter } from "../saasSubscriptionRoutes";
+import { connectRouter } from "../stripeConnectRoutes";
 
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -62,6 +63,7 @@ async function startServer() {
   app.use("/api/client", clientAuthRouter);
   app.use("/api/barber-users", barberUserRouter);
   app.use("/api/saas", saasRouter);
+  app.use("/api/connect", connectRouter);
   // Development helper: cria sessão mock automaticamente para o primeiro owner
   // if (process.env.NODE_ENV === "development") {
   //   app.use(async (req, res, next) => {

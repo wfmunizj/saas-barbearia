@@ -3,7 +3,7 @@ import { useSearch } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Zap, Crown, Rocket, AlertTriangle, Clock, CreditCard } from "lucide-react";
+import { CheckCircle, Zap, Crown, Rocket, AlertTriangle, Clock, CreditCard, ExternalLink, Link2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Plan {
@@ -21,6 +21,14 @@ interface Subscription {
   max_barbers: number;
   trial_ends_at: string | null;
   current_period_end: string | null;
+}
+
+interface ConnectStatus {
+  connected: boolean;
+  accountId?: string;
+  status?: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
 }
 
 const planIcons: Record<string, any> = {
@@ -64,6 +72,8 @@ export default function Subscription() {
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<number | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
+  const [connectLoading, setConnectLoading] = useState(false);
   const search = useSearch();
 
   useEffect(() => {
@@ -74,21 +84,30 @@ export default function Subscription() {
     if (params.get("cancelled")) {
       toast.info("Checkout cancelado. Você pode assinar quando quiser.");
     }
+    if (params.get("connect") === "success") {
+      toast.success("Conta Stripe conectada com sucesso! Agendamentos pagos serão transferidos direto para você. 🎉");
+    }
+    if (params.get("connect") === "error") {
+      toast.error("Erro ao conectar conta Stripe. Tente novamente.");
+    }
   }, [search]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [plansRes, subRes] = await Promise.all([
+        const [plansRes, subRes, connectRes] = await Promise.all([
           fetch("/api/saas/plans"),
           fetch("/api/saas/subscription"),
+          fetch("/api/connect/status"),
         ]);
         const plansData = await plansRes.json();
         const subData = await subRes.json();
+        const connectData = await connectRes.json();
         setPlans(plansData.plans ?? []);
         setSubscription(subData.subscription);
         setCanUse(subData.canUse ?? false);
         setDaysLeft(subData.daysLeftTrial ?? null);
+        setConnectStatus(connectData);
       } catch {
         toast.error("Erro ao carregar planos");
       } finally {
@@ -133,6 +152,40 @@ export default function Subscription() {
       toast.error("Erro de conexão");
     } finally {
       setOpeningPortal(false);
+    }
+  }
+
+  async function handleConnectOnboard() {
+    setConnectLoading(true);
+    try {
+      const res = await fetch("/api/connect/onboard", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error ?? "Erro ao conectar Stripe");
+      }
+    } catch {
+      toast.error("Erro de conexão");
+    } finally {
+      setConnectLoading(false);
+    }
+  }
+
+  async function handleConnectDashboard() {
+    setConnectLoading(true);
+    try {
+      const res = await fetch("/api/connect/dashboard", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, "_blank");
+      } else {
+        toast.error(data.error ?? "Erro ao abrir dashboard Stripe");
+      }
+    } catch {
+      toast.error("Erro de conexão");
+    } finally {
+      setConnectLoading(false);
     }
   }
 
@@ -325,9 +378,92 @@ export default function Subscription() {
           })}
         </div>
 
-        <p className="text-center text-sm text-muted-foreground pb-4">
+        <p className="text-center text-sm text-muted-foreground">
           7 dias grátis em qualquer plano · Cancele a qualquer momento · Pagamento via cartão
         </p>
+
+        {/* ── Stripe Connect ─────────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" />
+              Recebimentos — Stripe Connect
+            </CardTitle>
+            <CardDescription>
+              Conecte sua conta Stripe para receber os pagamentos de agendamentos online diretamente,
+              sem intermediários.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {connectStatus?.connected ? (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium">Conta conectada</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      connectStatus.chargesEnabled
+                        ? "bg-green-100 text-green-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}>
+                      {connectStatus.chargesEnabled ? "Ativo" : "Pendente verificação"}
+                    </span>
+                  </div>
+                  {!connectStatus.chargesEnabled && (
+                    <p className="text-sm text-muted-foreground">
+                      Complete o cadastro no Stripe para começar a receber pagamentos.
+                    </p>
+                  )}
+                  {connectStatus.chargesEnabled && (
+                    <p className="text-sm text-muted-foreground">
+                      Pagamentos de agendamentos online são transferidos diretamente para sua conta Stripe.
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {!connectStatus.chargesEnabled && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleConnectOnboard}
+                      disabled={connectLoading}
+                    >
+                      {connectLoading ? "Aguarde..." : "Completar cadastro"}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleConnectDashboard}
+                    disabled={connectLoading}
+                    className="flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {connectLoading ? "Abrindo..." : "Abrir Dashboard Stripe"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma conta conectada. Sem o Connect, os pagamentos online ficam retidos na
+                    plataforma e precisam ser repassados manualmente.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleConnectOnboard}
+                  disabled={connectLoading}
+                  className="shrink-0 flex items-center gap-2"
+                >
+                  <Link2 className="h-4 w-4" />
+                  {connectLoading ? "Aguarde..." : "Conectar Stripe"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="pb-4" />
 
       </div>
     </DashboardLayout>

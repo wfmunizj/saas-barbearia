@@ -400,9 +400,12 @@ export const clientPortalRouter = router({
 
         const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
 
+        // Destination charges: se a barbearia tem Connect, 100% do valor vai direto para ela
+        const connectAccountId = barbershop.stripeConnectAccountId ?? null;
+
         const session = await stripe.checkout.sessions.create({
           mode: "payment",
-          automatic_payment_methods: { enabled: true },
+          payment_method_types: ["card"],
           line_items: [{
             price_data: {
               currency: "brl",
@@ -411,6 +414,11 @@ export const clientPortalRouter = router({
             },
             quantity: 1,
           }],
+          ...(connectAccountId ? {
+            payment_intent_data: {
+              transfer_data: { destination: connectAccountId },
+            },
+          } : {}),
           success_url: `${origin}/b/${input.slug}/minha-conta?payment=success`,
           cancel_url: `${origin}/b/${input.slug}/agendar?payment=cancelled`,
           metadata: {

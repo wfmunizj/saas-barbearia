@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import { getDb } from "./db";
-import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
+import { payments, subscriptions, clientUsers, plans, appointments, barbershops } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -109,6 +109,23 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         }
         break;
 
+      // ── Stripe Connect: sincroniza status da conta Express da barbearia ──────
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const db = await getDb();
+        if (!db) break;
+
+        const status = account.charges_enabled ? "active" : "restricted";
+        await db
+          .update(barbershops)
+          .set({ stripeConnectStatus: status, updatedAt: new Date() })
+          .where(eq(barbershops.stripeConnectAccountId, account.id));
+
+        console.log("[Webhook] account.updated:", account.id, "→", status,
+          `(charges: ${account.charges_enabled}, payouts: ${account.payouts_enabled})`);
+        break;
+      }
+
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
@@ -158,10 +175,7 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
-  // Determine payment method — session.payment_method_types is null when
-  // automatic_payment_methods is enabled; fall back to checking payment_method_options
-  const pmType = session.payment_method_types?.[0]
-    ?? (session.payment_method_options?.pix ? "pix" : "card");
+  const pmType = session.payment_method_types?.[0] ?? "card";
 
   await db.insert(payments).values({
     appointmentId,

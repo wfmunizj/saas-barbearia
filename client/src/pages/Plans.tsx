@@ -419,7 +419,6 @@ export default function Plans() {
             <p className="font-medium text-foreground">Tipos de plano disponíveis</p>
             <p><strong>Mensal (créditos):</strong> Cliente tem N agendamentos por mês. Ex: 4 cortes — R$160.</p>
             <p><strong>Ilimitado:</strong> Assinatura sem limite de agendamentos. Ex: R$99,90/mês todos os dias.</p>
-            <p><strong>Avulso:</strong> Sem assinatura — cliente paga por corte individual.</p>
             <p className="mt-2"><strong>Dias fixos:</strong> Selecione os dias permitidos (ex: Ter, Qua, Qui) para planos mensais com horário fixo.</p>
           </CardContent>
         </Card>

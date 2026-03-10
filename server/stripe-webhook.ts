@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import { getDb } from "./db";
-import { payments, subscriptions, clientUsers, plans } from "../drizzle/schema";
+import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -170,6 +170,14 @@ async function handleCheckoutSessionCompleted(
   });
 
   console.log("[Webhook] One-time payment recorded for client:", clientId);
+
+  // Confirmar agendamento se appointment_id estiver no metadata
+  if (appointmentId) {
+    await db.update(appointments)
+      .set({ status: "confirmed", updatedAt: new Date() })
+      .where(eq(appointments.id, appointmentId));
+    console.log("[Webhook] Appointment confirmed via Stripe payment:", appointmentId);
+  }
 }
 
 // ─── customer.subscription.created / updated ─────────────────────────────────

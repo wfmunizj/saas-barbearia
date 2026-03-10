@@ -44,7 +44,12 @@ export default function BookingPage() {
   const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const bookMutation = trpc.client.bookAppointment.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if ((data as any).checkoutUrl) {
+        // Pagamento via Stripe — redirecionar para checkout externo
+        window.location.href = (data as any).checkoutUrl;
+        return;
+      }
       if (isGuestBooking) {
         toast.success(`Agendamento confirmado para ${guestName}! Seus créditos não foram debitados.`);
       } else {
@@ -117,15 +122,15 @@ export default function BookingPage() {
   }).filter(Boolean) as string[];
 
   // Inicia o booking — se tiver assinatura ativa, mostra popup de guest
-  const handleConfirmClick = () => {
-    if (me?.subscription && !showGuestDialog) {
+  const handleConfirmClick = (method?: "in_person" | "stripe") => {
+    if (me?.subscription && !isGuestBooking && !showGuestDialog && method === undefined) {
       setShowGuestDialog(true);
       return;
     }
-    executeBooking();
+    executeBooking(method ?? "in_person");
   };
 
-  const executeBooking = () => {
+  const executeBooking = (method: "in_person" | "stripe" = "in_person") => {
     if (!selectedBarber || !selectedService || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
@@ -139,6 +144,7 @@ export default function BookingPage() {
       useSubscriptionCredit: hasSubscription && !isGuestBooking,
       isGuestBooking,
       guestName: isGuestBooking ? guestName : undefined,
+      paymentMethod: hasSubscription || isGuestBooking ? "in_person" : method,
     });
   };
 
@@ -149,7 +155,7 @@ export default function BookingPage() {
       return;
     }
     setShowGuestDialog(false);
-    executeBooking();
+    executeBooking("in_person");
   };
 
   const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
@@ -418,9 +424,30 @@ export default function BookingPage() {
                   </div>
                 )}
 
-                {!me?.subscription && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
-                    ⚠️ Sem plano ativo — agendamento ficará pendente até confirmação
+                {!me?.subscription && !isGuestBooking && (
+                  <div className="rounded-lg border-2 p-3 space-y-3" style={{ borderColor: primaryColor }}>
+                    <p className="text-sm font-semibold">Como você vai pagar?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleConfirmClick("in_person")}
+                        disabled={isBooking}
+                        className="p-3 rounded-lg border-2 text-sm font-medium text-center transition-all hover:opacity-80 disabled:opacity-50"
+                        style={{ borderColor: primaryColor, color: primaryColor }}
+                      >
+                        🏪 Pagar na barbearia
+                      </button>
+                      <button
+                        onClick={() => handleConfirmClick("stripe")}
+                        disabled={isBooking}
+                        className="p-3 rounded-lg text-sm font-medium text-center transition-all hover:opacity-80 disabled:opacity-50 flex items-center justify-center"
+                        style={{ backgroundColor: primaryColor, color: secondaryColor }}
+                      >
+                        {isBooking ? <Loader2 className="h-4 w-4 animate-spin" /> : "💳 Pagar via Stripe"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      Valor: R$ {((selectedService?.priceInCents ?? 0) / 100).toFixed(2).replace(".", ",")}
+                    </p>
                   </div>
                 )}
 
@@ -433,17 +460,24 @@ export default function BookingPage() {
               </CardContent>
             </Card>
 
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setStep("time")}>Voltar</Button>
-              <Button
-                className="flex-1"
-                onClick={handleConfirmClick}
-                disabled={isBooking || (!isUnlimitedPlan && !!me?.subscription && creditsRemaining <= 0 && !isGuestBooking)}
-                style={{ backgroundColor: primaryColor, color: secondaryColor }}
-              >
-                {isBooking ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Agendando...</> : "Confirmar"}
-              </Button>
-            </div>
+            {/* Botão Confirmar: apenas para clientes COM assinatura ou guest booking */}
+            {(me?.subscription || isGuestBooking) && (
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1" onClick={() => setStep("time")}>Voltar</Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => handleConfirmClick()}
+                  disabled={isBooking || (!isUnlimitedPlan && !!me?.subscription && creditsRemaining <= 0 && !isGuestBooking)}
+                  style={{ backgroundColor: primaryColor, color: secondaryColor }}
+                >
+                  {isBooking ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Agendando...</> : "Confirmar"}
+                </Button>
+              </div>
+            )}
+            {/* Para clientes sem assinatura: apenas botão Voltar (os de pagamento estão acima) */}
+            {!me?.subscription && !isGuestBooking && (
+              <Button variant="outline" className="w-full" onClick={() => setStep("time")}>Voltar</Button>
+            )}
           </div>
         )}
       </main>
@@ -494,7 +528,7 @@ export default function BookingPage() {
                   onClick={() => {
                     setIsGuestBooking(false);
                     setShowGuestDialog(false);
-                    executeBooking();
+                    executeBooking("in_person");
                   }}
                 >
                   Para mim

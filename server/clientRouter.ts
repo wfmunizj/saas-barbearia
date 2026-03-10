@@ -196,7 +196,7 @@ export const clientPortalRouter = router({
       };
     }),
 
-  // Agendar (requer assinatura ativa ou pagamento avulso)
+  // Agendar (com assinatura ativa, guest booking, ou pagamento avulso)
   bookAppointment: publicProcedure
     .input(z.object({
       slug: z.string(),
@@ -208,6 +208,8 @@ export const clientPortalRouter = router({
       // Exceção pai/filho: agendamento em nome de outra pessoa
       isGuestBooking: z.boolean().default(false),
       guestName: z.string().optional(),
+      // Pagamento avulso: in_person (confirma direto) ou stripe (checkout one-time)
+      paymentMethod: z.enum(["in_person", "stripe"]).default("in_person"),
     }))
     .mutation(async ({ ctx, input }) => {
       const clientUser = await getClientUser((ctx as any).req);
@@ -327,7 +329,52 @@ export const clientPortalRouter = router({
         return { appointment, creditsRemaining: sub?.creditsRemaining ?? 0 };
       }
 
-      // ── Agendamento avulso (sem assinatura — status pending até pagamento) ─
+      // ── Agendamento avulso (sem assinatura) ────────────────────────────────
+      // in_person: confirma direto; stripe: gera checkout one-time e retorna URL
+
+      if (input.paymentMethod === "stripe") {
+        // Cria agendamento pendente (será confirmado pelo webhook após pagamento)
+        const [appointment] = await db.insert(appointments).values({
+          barbershopId: barbershop.id,
+          clientId: clientUser.clientId!,
+          barberId: input.barberId,
+          serviceId: input.serviceId,
+          appointmentDate: input.appointmentDate,
+          notes: input.notes,
+          status: "pending",
+          isGuestBooking: false,
+        }).returning();
+
+        // Busca nome e preço do serviço para o checkout
+        const [svc] = await db.select({ name: services.name, priceInCents: services.priceInCents })
+          .from(services).where(eq(services.id, input.serviceId)).limit(1);
+
+        const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
+
+        const session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          payment_method_types: ["card"],
+          line_items: [{
+            price_data: {
+              currency: "brl",
+              unit_amount: svc?.priceInCents ?? 0,
+              product_data: { name: svc?.name ?? "Agendamento" },
+            },
+            quantity: 1,
+          }],
+          success_url: `${origin}/b/${input.slug}/minha-conta?payment=success`,
+          cancel_url: `${origin}/b/${input.slug}/agendar?payment=cancelled`,
+          metadata: {
+            appointment_id: appointment.id.toString(),
+            client_id: clientUser.clientId!.toString(),
+            barbershop_id: barbershop.id.toString(),
+          },
+        });
+
+        return { appointment, creditsRemaining: 0, checkoutUrl: session.url };
+      }
+
+      // Pagamento na barbearia → confirma automaticamente (sem pending)
       const [appointment] = await db.insert(appointments).values({
         barbershopId: barbershop.id,
         clientId: clientUser.clientId!,
@@ -335,11 +382,11 @@ export const clientPortalRouter = router({
         serviceId: input.serviceId,
         appointmentDate: input.appointmentDate,
         notes: input.notes,
-        status: "pending",
+        status: "confirmed",
         isGuestBooking: false,
       }).returning();
 
-      return { appointment, creditsRemaining: 0 };
+      return { appointment, creditsRemaining: 0, checkoutUrl: null };
     }),
 
   // Criar sessão de checkout Stripe para assinar plano

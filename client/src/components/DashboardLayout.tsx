@@ -79,7 +79,7 @@ const allMenuItems = [
     roles: ["owner", "admin"],
   },
     {
-    icon: Settings,
+    icon: BriefcaseBusiness,
     label: "Nova Barbearia",
     path: "/nova-barbearia",
     roles: ["owner"],

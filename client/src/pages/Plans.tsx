@@ -203,11 +203,10 @@ export default function Plans() {
               {/* Tipo de Plano */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Tipo de Plano *</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {([
                     { value: "monthly_limited", label: "Mensal (créditos)", icon: Star },
                     { value: "unlimited", label: "Ilimitado", icon: Infinity },
-                    { value: "single_cut", label: "Avulso", icon: Scissors },
                   ] as const).map(({ value, label, icon: Icon }) => (
                     <button key={value} type="button"
                       onClick={() => handlePlanTypeChange(value)}

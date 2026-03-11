@@ -3,7 +3,7 @@ import { useSearch } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Zap, Crown, Rocket, AlertTriangle, Clock, CreditCard, ExternalLink, Link2 } from "lucide-react";
+import { CheckCircle, Zap, Crown, Rocket, AlertTriangle, Clock, CreditCard, ExternalLink, Settings } from "lucide-react";
 import { toast } from "sonner";
 
 interface Plan {
@@ -21,14 +21,6 @@ interface Subscription {
   max_barbers: number;
   trial_ends_at: string | null;
   current_period_end: string | null;
-}
-
-interface ConnectStatus {
-  connected: boolean;
-  accountId?: string;
-  status?: string;
-  chargesEnabled?: boolean;
-  payoutsEnabled?: boolean;
 }
 
 const planIcons: Record<string, any> = {
@@ -71,9 +63,7 @@ export default function Subscription() {
   const [canUse, setCanUse] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<number | null>(null);
-  const [openingPortal, setOpeningPortal] = useState(false);
-  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
-  const [connectLoading, setConnectLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const search = useSearch();
 
   useEffect(() => {
@@ -84,30 +74,27 @@ export default function Subscription() {
     if (params.get("cancelled")) {
       toast.info("Checkout cancelado. Você pode assinar quando quiser.");
     }
-    if (params.get("connect") === "success") {
-      toast.success("Conta Stripe conectada com sucesso! Agendamentos pagos serão transferidos direto para você. 🎉");
+    if (params.get("mp_connect") === "success") {
+      toast.success("Conta Mercado Pago conectada! Agendamentos pagos serão transferidos para você. 🎉");
     }
-    if (params.get("connect") === "error") {
-      toast.error("Erro ao conectar conta Stripe. Tente novamente.");
+    if (params.get("mp_connect") === "error") {
+      toast.error("Erro ao conectar conta Mercado Pago. Tente novamente em Configurações.");
     }
   }, [search]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [plansRes, subRes, connectRes] = await Promise.all([
+        const [plansRes, subRes] = await Promise.all([
           fetch("/api/saas/plans"),
           fetch("/api/saas/subscription"),
-          fetch("/api/connect/status"),
         ]);
         const plansData = await plansRes.json();
         const subData = await subRes.json();
-        const connectData = await connectRes.json();
         setPlans(plansData.plans ?? []);
         setSubscription(subData.subscription);
         setCanUse(subData.canUse ?? false);
         setDaysLeft(subData.daysLeftTrial ?? null);
-        setConnectStatus(connectData);
       } catch {
         toast.error("Erro ao carregar planos");
       } finally {
@@ -138,54 +125,22 @@ export default function Subscription() {
     }
   }
 
-  async function handlePortal() {
-    setOpeningPortal(true);
+  async function handleCancel() {
+    if (!confirm("Tem certeza que deseja cancelar sua assinatura? Você perderá o acesso ao fim do período atual.")) return;
+    setCancelling(true);
     try {
-      const res = await fetch("/api/saas/portal", { method: "POST" });
+      const res = await fetch("/api/saas/cancel", { method: "POST" });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.success) {
+        toast.success("Assinatura cancelada. Você terá acesso até o fim do período atual.");
+        setSubscription((s) => s ? { ...s, status: "cancelled" } : s);
       } else {
-        toast.error(data.error ?? "Erro ao abrir portal");
+        toast.error(data.error ?? "Erro ao cancelar assinatura");
       }
     } catch {
       toast.error("Erro de conexão");
     } finally {
-      setOpeningPortal(false);
-    }
-  }
-
-  async function handleConnectOnboard() {
-    setConnectLoading(true);
-    try {
-      const res = await fetch("/api/connect/onboard", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        toast.error(data.error ?? "Erro ao conectar Stripe");
-      }
-    } catch {
-      toast.error("Erro de conexão");
-    } finally {
-      setConnectLoading(false);
-    }
-  }
-
-  async function handleConnectDashboard() {
-    setConnectLoading(true);
-    try {
-      const res = await fetch("/api/connect/dashboard", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.open(data.url, "_blank");
-      } else {
-        toast.error(data.error ?? "Erro ao abrir dashboard Stripe");
-      }
-    } catch {
-      toast.error("Erro de conexão");
-    } finally {
-      setConnectLoading(false);
+      setCancelling(false);
     }
   }
 
@@ -268,7 +223,7 @@ export default function Subscription() {
                 {subscription.status === "past_due" && (
                   <div className="flex items-center gap-1.5 text-sm text-yellow-700">
                     <AlertTriangle className="h-4 w-4" />
-                    <span>Pagamento com problema — atualize seu cartão</span>
+                    <span>Pagamento com problema — entre em contato com o suporte</span>
                   </div>
                 )}
 
@@ -282,12 +237,12 @@ export default function Subscription() {
               {(subscription.status === "active" || subscription.status === "past_due") && (
                 <Button
                   variant="outline"
-                  onClick={handlePortal}
-                  disabled={openingPortal}
-                  className="flex items-center gap-2 shrink-0"
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="flex items-center gap-2 shrink-0 text-red-600 border-red-200 hover:bg-red-50"
                 >
                   <CreditCard className="h-4 w-4" />
-                  {openingPortal ? "Abrindo..." : "Gerenciar assinatura"}
+                  {cancelling ? "Cancelando..." : "Cancelar assinatura"}
                 </Button>
               )}
             </CardContent>
@@ -379,87 +334,37 @@ export default function Subscription() {
         </div>
 
         <p className="text-center text-sm text-muted-foreground">
-          7 dias grátis em qualquer plano · Cancele a qualquer momento · Pagamento via cartão
+          7 dias grátis em qualquer plano · Cancele a qualquer momento · Pagamento via Mercado Pago
         </p>
 
-        {/* ── Stripe Connect ─────────────────────────────────────────────────────── */}
+        {/* ── Mercado Pago Connect ──────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Link2 className="h-5 w-5" />
-              Recebimentos — Stripe Connect
+              <CreditCard className="h-5 w-5" />
+              Recebimentos — Mercado Pago
             </CardTitle>
             <CardDescription>
-              Conecte sua conta Stripe para receber os pagamentos de agendamentos online diretamente,
-              sem intermediários.
+              Conecte sua conta Mercado Pago para receber os pagamentos de agendamentos online
+              diretamente via PIX e cartão, sem intermediários.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {connectStatus?.connected ? (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">Conta conectada</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      connectStatus.chargesEnabled
-                        ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}>
-                      {connectStatus.chargesEnabled ? "Ativo" : "Pendente verificação"}
-                    </span>
-                  </div>
-                  {!connectStatus.chargesEnabled && (
-                    <p className="text-sm text-muted-foreground">
-                      Complete o cadastro no Stripe para começar a receber pagamentos.
-                    </p>
-                  )}
-                  {connectStatus.chargesEnabled && (
-                    <p className="text-sm text-muted-foreground">
-                      Pagamentos de agendamentos online são transferidos diretamente para sua conta Stripe.
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {!connectStatus.chargesEnabled && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleConnectOnboard}
-                      disabled={connectLoading}
-                    >
-                      {connectLoading ? "Aguarde..." : "Completar cadastro"}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleConnectDashboard}
-                    disabled={connectLoading}
-                    className="flex items-center gap-1.5"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {connectLoading ? "Abrindo..." : "Abrir Dashboard Stripe"}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">
-                    Nenhuma conta conectada. Sem o Connect, os pagamentos online ficam retidos na
-                    plataforma e precisam ser repassados manualmente.
-                  </p>
-                </div>
-                <Button
-                  onClick={handleConnectOnboard}
-                  disabled={connectLoading}
-                  className="shrink-0 flex items-center gap-2"
-                >
-                  <Link2 className="h-4 w-4" />
-                  {connectLoading ? "Aguarde..." : "Conectar Stripe"}
-                </Button>
-              </div>
-            )}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                Configure e gerencie a conexão com o Mercado Pago em{" "}
+                <strong>Configurações → Pagamentos</strong>.
+                Após conectar, os pagamentos de agendamentos serão transferidos diretamente para sua conta.
+              </p>
+              <Button
+                variant="outline"
+                className="shrink-0 flex items-center gap-2"
+                onClick={() => window.location.href = "/configuracoes"}
+              >
+                <Settings className="h-4 w-4" />
+                Ir para Configurações
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

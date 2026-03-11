@@ -231,44 +231,45 @@ export default function BarbershopSettings() {
         </Card>
       </form>
 
-      {/* ── Stripe: Pagamentos ──────────────────────────────────────────────── */}
+      {/* ── Mercado Pago: Pagamentos ─────────────────────────────────────────── */}
       <div className="max-w-2xl space-y-4 mt-2">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <CreditCard className="h-4 w-4" /> Pagamentos (Stripe)
+              <CreditCard className="h-4 w-4" /> Pagamentos (Mercado Pago)
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            {/* Status da conta Connect */}
+            {/* Status da conta MP Connect */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Stripe Connect</p>
+                <p className="text-sm font-medium">Mercado Pago Connect</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Necessário para receber pagamentos dos clientes diretamente.
+                  Conecte sua conta MP para receber pagamentos dos clientes via PIX e cartão.
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {barbershop?.stripeConnectStatus === "active" ? (
+                {barbershop?.mpConnectStatus === "active" ? (
                   <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full font-medium">
-                    <CheckCircle className="h-3.5 w-3.5" /> Ativo
-                  </span>
-                ) : barbershop?.stripeConnectStatus === "pending" ? (
-                  <span className="flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 px-2.5 py-1 rounded-full font-medium">
-                    <XCircle className="h-3.5 w-3.5" /> Pendente
+                    <CheckCircle className="h-3.5 w-3.5" /> Conectado
                   </span>
                 ) : (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full font-medium">
-                    <XCircle className="h-3.5 w-3.5" /> Não configurado
+                    <XCircle className="h-3.5 w-3.5" /> Não conectado
                   </span>
                 )}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open("/api/stripe/connect/onboarding", "_blank")}
+                  onClick={async () => {
+                    const res = await fetch("/api/mp/connect/auth-url", { method: "POST" });
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                    else toast.error("Erro ao conectar Mercado Pago");
+                  }}
                 >
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  {barbershop?.stripeConnectStatus === "active" ? "Gerenciar" : "Configurar"}
+                  {barbershop?.mpConnectStatus === "active" ? "Reconectar" : "Conectar"}
                 </Button>
               </div>
             </div>
@@ -279,16 +280,14 @@ export default function BarbershopSettings() {
 
               <div className="space-y-2.5 text-sm">
                 <div className="flex gap-2">
-                  <span className="shrink-0 mt-0.5">
-                    {barbershop?.stripeConnectStatus === "active"
-                      ? <CheckCircle className="h-4 w-4 text-green-600" />
-                      : <XCircle className="h-4 w-4 text-muted-foreground" />}
-                  </span>
+                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium">Variáveis de ambiente no Railway</p>
                     <code className="text-xs text-muted-foreground block mt-0.5">
-                      STRIPE_SECRET_KEY=sk_live_...<br />
-                      STRIPE_WEBHOOK_SECRET=whsec_...
+                      MP_ACCESS_TOKEN=APP_USR-...<br />
+                      MP_CLIENT_ID=...<br />
+                      MP_CLIENT_SECRET=...<br />
+                      BASE_URL=https://saas-barbearia-production.up.railway.app
                     </code>
                   </div>
                 </div>
@@ -296,21 +295,21 @@ export default function BarbershopSettings() {
                 <div className="flex gap-2">
                   <XCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-medium">Webhook no Stripe Dashboard</p>
+                    <p className="font-medium">Webhook no Mercado Pago</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Adicione o endpoint abaixo em{" "}
+                      Configure em{" "}
                       <a
-                        href="https://dashboard.stripe.com/webhooks"
+                        href="https://www.mercadopago.com.br/developers/panel/notifications"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="underline"
                       >
-                        Developers → Webhooks
+                        Developers → Notificações
                       </a>
                     </p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">
-                        {typeof window !== "undefined" ? window.location.origin : "https://SEU-DOMINIO"}/api/stripe/webhook
+                        {typeof window !== "undefined" ? window.location.origin : "https://SEU-DOMINIO"}/api/mp/webhook
                       </code>
                       <Button
                         type="button"
@@ -318,7 +317,7 @@ export default function BarbershopSettings() {
                         size="sm"
                         className="h-7 px-2"
                         onClick={() => {
-                          const url = `${window.location.origin}/api/stripe/webhook`;
+                          const url = `${window.location.origin}/api/mp/webhook`;
                           navigator.clipboard.writeText(url);
                           toast.success("URL copiada!");
                         }}
@@ -327,29 +326,25 @@ export default function BarbershopSettings() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1.5">
-                      Eventos necessários: <code className="text-xs">checkout.session.completed</code>,{" "}
-                      <code className="text-xs">customer.subscription.*</code>,{" "}
-                      <code className="text-xs">invoice.payment_*</code>,{" "}
-                      <code className="text-xs">account.updated</code>
+                      Eventos: <code className="text-xs">payment</code>,{" "}
+                      <code className="text-xs">subscription_preapproval</code>
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                   <span className="shrink-0 mt-0.5">
-                    {barbershop?.stripeConnectStatus === "active"
+                    {barbershop?.mpConnectStatus === "active"
                       ? <CheckCircle className="h-4 w-4 text-green-600" />
                       : <XCircle className="h-4 w-4 text-muted-foreground" />}
                   </span>
                   <div>
-                    <p className="font-medium">Onboarding Stripe Connect concluído</p>
+                    <p className="font-medium">Conta MP conectada via OAuth</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Complete o cadastro KYC no Stripe para ativar recebimentos.
+                      Clique em "Conectar" acima e autorize o acesso.
                       Status atual:{" "}
                       <span className="font-medium">
-                        {barbershop?.stripeConnectStatus === "active" ? "✅ Ativo" :
-                         barbershop?.stripeConnectStatus === "pending" ? "⏳ Aguardando aprovação" :
-                         "❌ Não iniciado"}
+                        {barbershop?.mpConnectStatus === "active" ? "✅ Conectado" : "❌ Não conectado"}
                       </span>
                     </p>
                   </div>

@@ -15,9 +15,9 @@ import {
 } from "../drizzle/schema";
 import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
-import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-10-29.clover" });
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // ─── Helper: autenticar clientUser via cookie ─────────────────────────────────
 
@@ -210,15 +210,15 @@ export const clientPortalRouter = router({
       // Exceção pai/filho: agendamento em nome de outra pessoa
       isGuestBooking: z.boolean().default(false),
       guestName: z.string().optional(),
-      // Pagamento avulso: in_person (confirma direto) ou stripe (checkout one-time)
-      paymentMethod: z.enum(["in_person", "stripe"]).default("in_person"),
+      // Pagamento avulso: in_person (confirma direto) ou mp (Checkout Pro MP)
+      paymentMethod: z.enum(["in_person", "mp"]).default("in_person"),
     }))
     .mutation(async ({ ctx, input }) => {
       const clientUser = await getClientUser((ctx as any).req);
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const [barbershop] = await db.select({ id: barbershops.id, stripeConnectAccountId: barbershops.stripeConnectAccountId })
+      const [barbershop] = await db.select({ id: barbershops.id, mpAccessToken: barbershops.mpAccessToken })
         .from(barbershops).where(eq(barbershops.slug, input.slug)).limit(1);
       if (!barbershop) throw new TRPCError({ code: "NOT_FOUND" });
 
@@ -379,11 +379,10 @@ export const clientPortalRouter = router({
       }
 
       // ── Agendamento avulso (sem assinatura) ────────────────────────────────
-      // in_person: confirma direto; stripe: gera checkout one-time e retorna URL
+      // in_person: confirma direto; mp: gera Checkout Pro MP e retorna URL
 
-      if (input.paymentMethod === "stripe") {
-        // Cria agendamento pendente (atômico: appointment + appointmentServices)
-        // Será confirmado pelo webhook após pagamento
+      if (input.paymentMethod === "mp") {
+        // Cria agendamento pendente — será confirmado pelo webhook após pagamento
         const [appointment] = await db.transaction(async (tx) => {
           const [appt] = await tx.insert(appointments).values({
             barbershopId: barbershop.id,
@@ -412,35 +411,48 @@ export const clientPortalRouter = router({
 
         const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
 
-        // Destination charges: se a barbearia tem Connect, 100% do valor vai direto para ela
-        const connectAccountId = barbershop.stripeConnectAccountId ?? null;
+        // Usa access_token da barbearia se disponível (Marketplace), senão usa token da plataforma
+        const accessToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
-        const session = await stripe.checkout.sessions.create({
-          mode: "payment",
-          payment_method_types: ["card"],
-          line_items: [{
-            price_data: {
-              currency: "brl",
-              unit_amount: totalPrice,
-              product_data: { name: `Agendamento — ${selectedServices.map(s => s.name).join(" + ")}` },
-            },
+        const preferenceBody = {
+          items: [{
+            title: `Agendamento — ${selectedServices.map(s => s.name).join(" + ")}`,
             quantity: 1,
+            currency_id: "BRL",
+            unit_price: totalPrice / 100,
           }],
-          ...(connectAccountId ? {
-            payment_intent_data: {
-              transfer_data: { destination: connectAccountId },
-            },
-          } : {}),
-          success_url: `${origin}/b/${input.slug}/minha-conta?payment=success`,
-          cancel_url: `${origin}/b/${input.slug}/agendar?payment=cancelled`,
+          back_urls: {
+            success: `${origin}/b/${input.slug}/minha-conta?payment=success`,
+            failure: `${origin}/b/${input.slug}/agendar?payment=cancelled`,
+            pending: `${origin}/b/${input.slug}/minha-conta?payment=pending`,
+          },
+          auto_return: "approved",
+          notification_url: `${BASE_URL}/api/mp/webhook`,
+          external_reference: `appt:${appointment.id}`,
           metadata: {
             appointment_id: appointment.id.toString(),
             client_id: clientUser.clientId!.toString(),
             barbershop_id: barbershop.id.toString(),
           },
+        };
+
+        const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(preferenceBody),
         });
 
-        return { appointment, creditsRemaining: 0, checkoutUrl: session.url };
+        if (!mpRes.ok) {
+          const err = await mpRes.text();
+          console.error("[BookAppointment] Erro MP Preference:", err);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar checkout de pagamento" });
+        }
+
+        const preference = await mpRes.json() as any;
+        return { appointment, creditsRemaining: 0, checkoutUrl: preference.init_point };
       }
 
       // Pagamento na barbearia → confirma automaticamente (atômico: appointment + appointmentServices)
@@ -473,7 +485,7 @@ export const clientPortalRouter = router({
       return { appointment, creditsRemaining: 0, checkoutUrl: null };
     }),
 
-  // Criar sessão de checkout Stripe para assinar plano
+  // Criar checkout MP Preapproval para assinar plano
   createSubscriptionCheckout: publicProcedure
     .input(z.object({
       slug: z.string(),
@@ -492,40 +504,78 @@ export const clientPortalRouter = router({
         .where(and(eq(plans.id, input.planId), eq(plans.isActive, true))).limit(1);
       if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plano não encontrado" });
 
-      if (!plan.stripePriceId) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Plano sem preço configurado no Stripe" });
-      }
-
-      // Cria ou reutiliza customer no Stripe
-      let stripeCustomerId = clientUser.stripeCustomerId;
-      if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({
-          email: clientUser.email,
-          name: clientUser.name ?? undefined,
-          metadata: { clientUserId: clientUser.id.toString(), barbershopId: barbershop.id.toString() },
-        });
-        stripeCustomerId = customer.id;
-        await db.update(clientUsers)
-          .set({ stripeCustomerId, updatedAt: new Date() })
-          .where(eq(clientUsers.id, clientUser.id));
-      }
-
       const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
-      const session = await stripe.checkout.sessions.create({
-        customer: stripeCustomerId,
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-        success_url: `${origin}/b/${input.slug}/minha-conta?subscription=success`,
-        cancel_url: `${origin}/b/${input.slug}?subscription=cancelled`,
-        metadata: {
-          client_user_id: clientUser.id.toString(),
-          plan_id: plan.id.toString(),
-          barbershop_id: barbershop.id.toString(),
-        },
-      });
+      const accessToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
-      return { checkoutUrl: session.url };
+      if (plan.mpPreapprovalPlanId) {
+        // Assinatura recorrente via Preapproval Plan do MP
+        const preapprovalBody = {
+          preapproval_plan_id: plan.mpPreapprovalPlanId,
+          payer_email: clientUser.email,
+          back_url: `${origin}/b/${input.slug}/minha-conta?subscription=success`,
+          external_reference: `clientUserId:${clientUser.id}|planId:${plan.id}`,
+          notification_url: `${BASE_URL}/api/mp/webhook`,
+        };
+
+        const mpRes = await fetch("https://api.mercadopago.com/preapproval", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(preapprovalBody),
+        });
+
+        if (!mpRes.ok) {
+          const err = await mpRes.text();
+          console.error("[SubscriptionCheckout] Erro MP Preapproval:", err);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar assinatura" });
+        }
+
+        const sub = await mpRes.json() as any;
+        return { checkoutUrl: sub.init_point };
+      } else {
+        // Fallback: Checkout Pro (pagamento único sem recorrência automática)
+        const preferenceBody = {
+          items: [{
+            title: `Plano ${plan.name} — Barbearia`,
+            quantity: 1,
+            currency_id: "BRL",
+            unit_price: plan.priceInCents / 100,
+          }],
+          back_urls: {
+            success: `${origin}/b/${input.slug}/minha-conta?subscription=success`,
+            failure: `${origin}/b/${input.slug}?subscription=cancelled`,
+            pending: `${origin}/b/${input.slug}/minha-conta?subscription=pending`,
+          },
+          auto_return: "approved",
+          notification_url: `${BASE_URL}/api/mp/webhook`,
+          external_reference: `clientUserId:${clientUser.id}|planId:${plan.id}`,
+          metadata: {
+            client_user_id: clientUser.id.toString(),
+            plan_id: plan.id.toString(),
+            barbershop_id: barbershop.id.toString(),
+          },
+        };
+
+        const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(preferenceBody),
+        });
+
+        if (!mpRes.ok) {
+          const err = await mpRes.text();
+          console.error("[SubscriptionCheckout] Erro MP Preference:", err);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar checkout" });
+        }
+
+        const preference = await mpRes.json() as any;
+        return { checkoutUrl: preference.init_point };
+      }
     }),
 
   // Cancelar agendamento (com devolução de crédito se aplicável)
@@ -616,11 +666,22 @@ export const clientPortalRouter = router({
         and(eq(subscriptions.clientUserId, clientUser.id), eq(subscriptions.status, "active"))
       ).limit(1);
 
-      if (!sub?.stripeSubscriptionId) {
+      if (!sub) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma assinatura ativa encontrada" });
       }
 
-      await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+      // Cancela no MP se tiver ID de assinatura recorrente
+      if (sub.mpSubscriptionId) {
+        const accessToken = MP_ACCESS_TOKEN;
+        await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ status: "cancelled" }),
+        });
+      }
 
       await db.update(subscriptions).set({
         status: "cancelled",

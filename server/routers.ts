@@ -18,7 +18,9 @@ import {
   appointmentServices, clients,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
-import Stripe from "stripe";
+
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // Helper para extrair barbershopId do contexto do usuário autenticado
 async function getBarbershopId(userId: number): Promise<number> {
@@ -1169,20 +1171,40 @@ export const appRouter = router({
         const dbInstance = await import("./db").then(m => m.getDb());
         if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-        // Cria produto e preço no Stripe automaticamente
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-          apiVersion: "2025-10-29.clover",
-        });
-        const product = await stripe.products.create({
-          name: input.name,
-          description: input.description,
-        });
-        const price = await stripe.prices.create({
-          product: product.id,
-          unit_amount: input.priceInCents,
-          currency: "brl",
-          recurring: { interval: "month" },
-        });
+        // Cria Preapproval Plan no Mercado Pago automaticamente (para assinaturas recorrentes)
+        let mpPreapprovalPlanId: string | null = null;
+        if (MP_ACCESS_TOKEN && input.planType !== "single_cut") {
+          try {
+            const mpPlanBody = {
+              reason: input.name,
+              auto_recurring: {
+                frequency: 1,
+                frequency_type: "months",
+                transaction_amount: input.priceInCents / 100,
+                currency_id: "BRL",
+              },
+              back_url: `${BASE_URL}/`,
+              notification_url: `${BASE_URL}/api/mp/webhook`,
+            };
+            const mpRes = await fetch("https://api.mercadopago.com/preapproval_plan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+              },
+              body: JSON.stringify(mpPlanBody),
+            });
+            if (mpRes.ok) {
+              const mpPlan = await mpRes.json() as any;
+              mpPreapprovalPlanId = mpPlan.id;
+              console.log("[Plans] MP Preapproval Plan criado:", mpPreapprovalPlanId);
+            } else {
+              console.warn("[Plans] Falha ao criar MP Preapproval Plan:", await mpRes.text());
+            }
+          } catch (err: any) {
+            console.warn("[Plans] Erro MP (não bloqueante):", err.message);
+          }
+        }
 
         const { serviceIds, allowedDaysOfWeek, ...planData } = input;
 
@@ -1191,8 +1213,7 @@ export const appRouter = router({
           .values({
             ...planData,
             barbershopId,
-            stripePriceId: price.id,
-            stripeProductId: product.id,
+            mpPreapprovalPlanId,
             allowedDaysOfWeek: allowedDaysOfWeek ? JSON.stringify(allowedDaysOfWeek) : null,
           })
           .returning();

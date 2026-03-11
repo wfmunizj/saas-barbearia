@@ -98,7 +98,7 @@ export default function BookingPage() {
     return d.toISOString().split("T")[0];
   }).filter(Boolean) as string[];
 
-  const handleConfirmClick = (method?: "in_person" | "stripe") => {
+  const handleConfirmClick = (method?: "in_person" | "mp") => {
     if (me?.subscription && !isGuestBooking && !showGuestDialog && method === undefined) {
       setShowGuestDialog(true);
       return;
@@ -106,7 +106,7 @@ export default function BookingPage() {
     executeBooking(method ?? "in_person");
   };
 
-  const executeBooking = (method: "in_person" | "stripe" = "in_person") => {
+  const executeBooking = (method: "in_person" | "mp" = "in_person") => {
     if (!selectedBarber || selectedServices.length === 0 || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
@@ -903,7 +903,7 @@ export default function BookingPage() {
                       Pagar na barbearia
                     </button>
                     <button
-                      onClick={() => handleConfirmClick("stripe")}
+                      onClick={() => handleConfirmClick("mp")}
                       disabled={isBooking}
                       className="p-3.5 rounded-xl text-sm font-semibold flex flex-col items-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-50"
                       style={{
@@ -917,7 +917,7 @@ export default function BookingPage() {
                       ) : (
                         <CreditCard className="h-5 w-5" />
                       )}
-                      Pagar via Stripe
+                      Pagar via Mercado Pago
                     </button>
                   </div>
                   <p className="text-xs text-white/30 text-center">

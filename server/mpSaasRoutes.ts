@@ -1,23 +1,23 @@
 /**
- * server/saasSubscriptionRoutes.ts
- * Registrar no index.ts:
- *   import { saasRouter } from "../saasSubscriptionRoutes";
- *   app.use("/api/saas", saasRouter);
+ * server/mpSaasRoutes.ts
+ * Billing SaaS com Mercado Pago Checkout Pro
+ * Substitui saasSubscriptionRoutes.ts
+ *
+ * Registrado em _core/index.ts:
+ *   app.use("/api/saas", mpSaasRouter);
  */
 import { Router, Request, Response } from "express";
-import Stripe from "stripe";
 import { getDb } from "./db";
 import { users, barbershops } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-10-29.clover" as any,
-});
-
 const TRIAL_DAYS = 7;
-export const saasRouter = Router();
+export const mpSaasRouter = Router();
+
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // ─── Helper: autentica owner ──────────────────────────────────────────────────
 async function getOwner(req: Request) {
@@ -43,12 +43,11 @@ async function getOwner(req: Request) {
 
 async function rawSql(db: any, query: string): Promise<any[]> {
   const r = await db.execute(query as any);
-  // postgres-js retorna array direto
   return Array.isArray(r) ? r : (r.rows ?? []);
 }
 
 // ─── GET /api/saas/plans ──────────────────────────────────────────────────────
-saasRouter.get("/plans", async (_req: Request, res: Response) => {
+mpSaasRouter.get("/plans", async (_req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
   const plans = await rawSql(db,
@@ -59,15 +58,12 @@ saasRouter.get("/plans", async (_req: Request, res: Response) => {
 });
 
 // ─── GET /api/saas/subscription ───────────────────────────────────────────────
-saasRouter.get("/subscription", async (req: Request, res: Response) => {
+mpSaasRouter.get("/subscription", async (req: Request, res: Response) => {
   const owner = await getOwner(req);
   if (!owner) return res.status(401).json({ error: "Não autorizado" });
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  // Checa a subscription de QUALQUER barbearia do mesmo owner (por owner_id).
-  // Isso garante que ao criar barbearias adicionais, o acesso ao sistema é mantido
-  // pela subscription da barbearia principal — SaaS subscription é por conta (owner).
   const rows = await rawSql(db,
     "SELECT ss.*, sp.name as plan_name, sp.max_barbers, sp.price_in_cents " +
     "FROM saas_subscriptions ss " +
@@ -101,8 +97,7 @@ saasRouter.get("/subscription", async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/saas/start-trial ───────────────────────────────────────────────
-// Chamado automaticamente no registerBarbershop (auth.ts)
-saasRouter.post("/start-trial", async (req: Request, res: Response) => {
+mpSaasRouter.post("/start-trial", async (req: Request, res: Response) => {
   const owner = await getOwner(req);
   if (!owner) return res.status(401).json({ error: "Não autorizado" });
   const db = await getDb();
@@ -131,7 +126,8 @@ saasRouter.post("/start-trial", async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/saas/checkout ──────────────────────────────────────────────────
-saasRouter.post("/checkout", async (req: Request, res: Response) => {
+// Cria Preference do MP para assinar um plano SaaS
+mpSaasRouter.post("/checkout", async (req: Request, res: Response) => {
   const owner = await getOwner(req);
   if (!owner) return res.status(401).json({ error: "Não autorizado" });
   const { planId } = req.body;
@@ -144,74 +140,76 @@ saasRouter.post("/checkout", async (req: Request, res: Response) => {
   );
   const plan = plans[0];
   if (!plan) return res.status(404).json({ error: "Plano não encontrado" });
-  if (!plan.stripe_price_id)
-    return res.status(400).json({ error: "Stripe ainda não configurado para este plano. Adicione o stripe_price_id no banco." });
 
-  // Busca ou cria customer Stripe
-  const subRows = await rawSql(db,
-    "SELECT stripe_customer_id FROM saas_subscriptions WHERE barbershop_id = " + owner.barbershopId + " LIMIT 1"
-  );
-  let stripeCustomerId = subRows[0]?.stripe_customer_id;
+  const [bs] = await db
+    .select()
+    .from(barbershops)
+    .where(eq(barbershops.id, owner.barbershopId!))
+    .limit(1);
 
-  if (!stripeCustomerId) {
-    const [bs] = await db.select().from(barbershops)
-      .where(eq(barbershops.id, owner.barbershopId!)).limit(1);
-    const customer = await stripe.customers.create({
+  const origin = req.headers.origin ?? BASE_URL;
+
+  // Cria Preference no MP (Checkout Pro)
+  const preferenceBody = {
+    items: [
+      {
+        id: String(plan.id),
+        title: `Plano SaaS — ${plan.name}`,
+        quantity: 1,
+        currency_id: "BRL",
+        unit_price: plan.price_in_cents / 100,
+      },
+    ],
+    payer: {
       email: owner.email ?? undefined,
       name: bs?.name ?? owner.name ?? undefined,
-      metadata: { barbershopId: String(owner.barbershopId) },
-    });
-    stripeCustomerId = customer.id;
-    await rawSql(db,
-      "UPDATE saas_subscriptions SET stripe_customer_id='" + stripeCustomerId +
-      "', updated_at=NOW() WHERE barbershop_id=" + owner.barbershopId
-    );
+    },
+    back_urls: {
+      success: `${origin}/subscription?success=true`,
+      failure: `${origin}/subscription?cancelled=true`,
+      pending: `${origin}/subscription?pending=true`,
+    },
+    auto_return: "approved",
+    notification_url: `${BASE_URL}/api/mp/webhook`,
+    external_reference: `saas|barbershopId:${owner.barbershopId}|planId:${planId}`,
+    metadata: {
+      type: "saas_subscription",
+      barbershop_id: String(owner.barbershopId),
+      saas_plan_id: String(planId),
+    },
+  };
+
+  const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify(preferenceBody),
+  });
+
+  if (!mpRes.ok) {
+    const err = await mpRes.text();
+    console.error("[SaaS] Erro ao criar preference MP:", err);
+    return res.status(500).json({ error: "Erro ao criar checkout" });
   }
 
-  const origin = req.headers.origin ?? "http://localhost:3000";
-  const session = await stripe.checkout.sessions.create({
-  customer: stripeCustomerId,
-  mode: "subscription",
-  payment_method_types: ["card"],
-  line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
-  subscription_data: {
-    // trial_period_days: 7,  
-    metadata: {
-      barbershopId: String(owner.barbershopId),
-      saasPlanId: String(planId),
-    },
-  },
-  success_url: origin + "/subscription?success=true",
-  cancel_url: origin + "/subscription?cancelled=true",
-  metadata: {
-    type: "saas_subscription",
-    barbershopId: String(owner.barbershopId),
-    saasPlanId: String(planId),
-  },
+  const preference = await mpRes.json() as any;
+  return res.json({ url: preference.init_point });
 });
 
-  return res.json({ url: session.url });
-});
-
-// ─── POST /api/saas/portal ────────────────────────────────────────────────────
-saasRouter.post("/portal", async (req: Request, res: Response) => {
+// ─── POST /api/saas/cancel ────────────────────────────────────────────────────
+// Cancela a assinatura SaaS (sem portal externo, feito direto)
+mpSaasRouter.post("/cancel", async (req: Request, res: Response) => {
   const owner = await getOwner(req);
   if (!owner) return res.status(401).json({ error: "Não autorizado" });
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  const subRows = await rawSql(db,
-    "SELECT stripe_customer_id FROM saas_subscriptions WHERE barbershop_id = " + owner.barbershopId + " LIMIT 1"
+  await rawSql(db,
+    "UPDATE saas_subscriptions SET status='cancelled', cancelled_at=NOW(), updated_at=NOW() " +
+    "WHERE barbershop_id=" + owner.barbershopId + " AND status IN ('active','trialing')"
   );
-  const stripeCustomerId = subRows[0]?.stripe_customer_id;
-  if (!stripeCustomerId)
-    return res.status(400).json({ error: "Sem assinatura Stripe vinculada" });
 
-  const origin = req.headers.origin ?? "http://localhost:3000";
-  const portal = await stripe.billingPortal.sessions.create({
-    customer: stripeCustomerId,
-    return_url: origin + "/subscription",
-  });
-
-  return res.json({ url: portal.url });
+  return res.json({ success: true });
 });

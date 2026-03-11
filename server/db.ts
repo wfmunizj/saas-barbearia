@@ -363,7 +363,31 @@ export async function getAppointments(
   if (filters?.endDate) conditions.push(lte(appointments.appointmentDate, filters.endDate));
   if (filters?.barberId) conditions.push(eq(appointments.barberId, filters.barberId));
 
-  return db.select().from(appointments).where(and(...conditions)).orderBy(desc(appointments.appointmentDate));
+  return db
+    .select({
+      id: appointments.id,
+      barbershopId: appointments.barbershopId,
+      clientId: appointments.clientId,
+      barberId: appointments.barberId,
+      serviceId: appointments.serviceId,
+      appointmentDate: appointments.appointmentDate,
+      status: appointments.status,
+      notes: appointments.notes,
+      isGuestBooking: appointments.isGuestBooking,
+      guestName: appointments.guestName,
+      cancellationReason: appointments.cancellationReason,
+      creditRefunded: appointments.creditRefunded,
+      cancelledAt: appointments.cancelledAt,
+      createdAt: appointments.createdAt,
+      updatedAt: appointments.updatedAt,
+      serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
+    })
+    .from(appointments)
+    .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+    .leftJoin(services, eq(services.id, appointmentServices.serviceId))
+    .where(and(...conditions))
+    .groupBy(appointments.id)
+    .orderBy(desc(appointments.appointmentDate));
 }
 
 export async function createAppointment(data: InsertAppointment) {

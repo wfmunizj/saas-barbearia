@@ -218,7 +218,7 @@ export const clientPortalRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const [barbershop] = await db.select({ id: barbershops.id })
+      const [barbershop] = await db.select({ id: barbershops.id, stripeConnectAccountId: barbershops.stripeConnectAccountId })
         .from(barbershops).where(eq(barbershops.slug, input.slug)).limit(1);
       if (!barbershop) throw new TRPCError({ code: "NOT_FOUND" });
 
@@ -571,7 +571,7 @@ export const clientPortalRouter = router({
           .where(and(eq(subscriptions.clientUserId, clientUser.id), eq(subscriptions.status, "active")))
           .limit(1);
 
-        if (sub) {
+        if (sub && sub.planId) {
           // Verifica se o plano é ilimitado (não precisa devolver crédito)
           const [plan] = await db.select({ isUnlimited: plans.isUnlimited, creditsPerMonth: plans.creditsPerMonth })
             .from(plans).where(eq(plans.id, sub.planId)).limit(1);

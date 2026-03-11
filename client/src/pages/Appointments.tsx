@@ -22,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import AppointmentCalendar from "@/components/AppointmentCalendar";
-import { Calendar, Plus, Clock, List } from "lucide-react";
+import { Calendar, Plus, Clock, List, CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -70,6 +70,22 @@ export default function Appointments() {
     },
     onError: (error) => {
       toast.error("Erro ao atualizar agendamento: " + error.message);
+    },
+  });
+
+  const autoCompleteMutation = trpc.appointments.triggerAutoComplete.useMutation({
+    onSuccess: (result) => {
+      if (result.completed > 0) {
+        toast.success(`${result.completed} agendamento${result.completed !== 1 ? "s" : ""} concluído${result.completed !== 1 ? "s" : ""} automaticamente!`);
+      } else {
+        toast.info("Nenhum agendamento passado encontrado para concluir.");
+      }
+      invalidateAppts();
+      utils.commissions.getBalance.invalidate();
+      utils.barbers.summary.invalidate();
+    },
+    onError: (error) => {
+      toast.error("Erro ao concluir agendamentos: " + error.message);
     },
   });
 
@@ -246,6 +262,16 @@ export default function Appointments() {
                 Lista
               </button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => autoCompleteMutation.mutate()}
+              disabled={autoCompleteMutation.isPending}
+              title="Conclui automaticamente agendamentos passados e gera comissões/fichas"
+            >
+              <CheckCheck className="mr-1.5 h-4 w-4" />
+              {autoCompleteMutation.isPending ? "Processando..." : "Concluir Passados"}
+            </Button>
             {newApptDialog}
           </div>
         </div>

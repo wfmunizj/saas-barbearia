@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { barberUserRouter } from "../barberUserRoutes";
 import { saasRouter } from "../saasSubscriptionRoutes";
 import { connectRouter } from "../stripeConnectRoutes";
+import { scheduleAutoComplete } from "../autoComplete";
 
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -135,6 +136,8 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Agenda conclusão automática de agendamentos passados às 23:30 diariamente
+    scheduleAutoComplete();
   });
 }
 

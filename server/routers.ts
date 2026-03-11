@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { autoCompletePastAppointments } from "./autoComplete";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -762,6 +763,14 @@ export const appRouter = router({
         }).onConflictDoNothing();
 
         return { success: true, commissionAmountInCents };
+      }),
+
+    // Conclui manualmente todos os agendamentos passados da barbearia (admin only)
+    triggerAutoComplete: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const result = await autoCompletePastAppointments(barbershopId);
+        return result;
       }),
   }),
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,7 +32,7 @@ export default function BookingPage() {
   const [isGuestBooking, setIsGuestBooking] = useState(false);
   const [guestName, setGuestName] = useState("");
 
-  const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
   const { data: me } = trpc.client.me.useQuery({ slug });
@@ -61,7 +62,7 @@ export default function BookingPage() {
       } else {
         toast.success("Agendamento confirmado!");
       }
-      utils.client.me.invalidate();
+      queryClient.invalidateQueries({ queryKey: [['client', 'me']] });
       navigate(`/b/${slug}/minha-conta`);
     },
     onError: (err) => {

@@ -1,4 +1,5 @@
 import { useParams, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default function ClientAccountPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
 
-  const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const { data: me, isLoading } = trpc.client.me.useQuery({ slug });
   const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
 
@@ -37,7 +38,7 @@ export default function ClientAccountPage() {
         ? "Agendamento cancelado. Seu crédito foi devolvido!"
         : "Agendamento cancelado."
       );
-      utils.client.me.invalidate();
+      queryClient.invalidateQueries({ queryKey: [['client', 'me']] });
       setCancelDialog({ open: false, appointmentId: null });
       setCancelReason("");
     },
@@ -47,7 +48,7 @@ export default function ClientAccountPage() {
   const cancelSubscriptionMutation = trpc.client.cancelSubscription.useMutation({
     onSuccess: () => {
       toast.success("Assinatura cancelada.");
-      utils.client.me.invalidate();
+      queryClient.invalidateQueries({ queryKey: [['client', 'me']] });
       navigate(`/b/${slug}`);
     },
     onError: (err) => toast.error(err.message),
@@ -55,7 +56,7 @@ export default function ClientAccountPage() {
 
   const handleLogout = async () => {
     await fetch("/api/client/logout", { method: "POST", credentials: "include" });
-    utils.client.me.invalidate();
+    queryClient.invalidateQueries({ queryKey: [['client', 'me']] });
     navigate(`/b/${slug}`);
   };
 

@@ -37,7 +37,7 @@ export async function autoCompletePastAppointments(barbershopId?: number): Promi
   // Filtra agendamentos passados ainda não concluídos/cancelados
   const baseWhere = and(
     inArray(appointments.status, ["confirmed", "pending"]),
-    lt(appointments.scheduledAt, now),
+    lt(appointments.appointmentDate, now),
   );
   const whereClause = barbershopId
     ? and(baseWhere, eq(appointments.barbershopId, barbershopId))

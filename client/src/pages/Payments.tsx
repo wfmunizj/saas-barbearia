@@ -63,7 +63,11 @@ export default function Payments() {
         <div>
           <h1 className="text-3xl font-bold">Pagamentos</h1>
           <p className="text-muted-foreground mt-2">
-            Histórico de transações e receitas
+            Transações realizadas pelos seus clientes — agendamentos avulsos e assinaturas de planos
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-400" />
+            Esta tela mostra o que os clientes pagaram para a barbearia. Para ver repasses aos barbeiros, acesse o Resumo de cada barbeiro.
           </p>
         </div>
 

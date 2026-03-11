@@ -40,21 +40,20 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
   const [payMethod, setPayMethod] = useState<"cash" | "pix" | "transfer" | "other">("cash");
   const [payNotes, setPayNotes] = useState("");
 
-  const { data, isLoading, refetch } = trpc.barbers.summary.useQuery({ barberId, startDate, endDate });
-  const { data: balance, refetch: refetchBalance } = trpc.commissions.getBalance.useQuery({ barberId });
-  const { data: paymentHistory, refetch: refetchHistory } = trpc.commissions.getPaymentHistory.useQuery({ barberId });
-  const { data: fichasData, refetch: refetchFichas } = trpc.commissions.getFichas.useQuery({ barberId, startDate, endDate });
+  const { data, isLoading } = trpc.barbers.summary.useQuery({ barberId, startDate, endDate });
+  const { data: balance } = trpc.commissions.getBalance.useQuery({ barberId });
+  const { data: paymentHistory } = trpc.commissions.getPaymentHistory.useQuery({ barberId });
+  const { data: fichasData } = trpc.commissions.getFichas.useQuery({ barberId, startDate, endDate });
 
   const recordPaymentMutation = trpc.commissions.recordPayment.useMutation({
     onSuccess: () => {
       toast.success("Pagamento registrado com sucesso!");
       setPayAmount("");
       setPayNotes("");
-      refetchBalance();
-      refetchHistory();
-      refetchFichas();
-      refetch();
-      utils.commissions.getBalance.invalidate();
+      utils.commissions.getBalance.invalidate({ barberId });
+      utils.commissions.getPaymentHistory.invalidate({ barberId });
+      utils.commissions.getFichas.invalidate({ barberId });
+      utils.barbers.summary.invalidate({ barberId });
     },
     onError: err => toast.error(err.message),
   });
@@ -146,7 +145,10 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm bg-background" />
               </div>
-              <Button variant="outline" size="sm" onClick={() => { refetch(); refetchFichas(); }}>Filtrar</Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                utils.barbers.summary.invalidate({ barberId });
+                utils.commissions.getFichas.invalidate({ barberId });
+              }}>Filtrar</Button>
               <Button variant="outline" size="sm" onClick={() => {
                 const now = new Date();
                 setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
@@ -427,7 +429,15 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 {data.appointments.map((appt: any) => (
                   <div key={appt.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
-                      <p className="text-sm font-medium">{appt.serviceName}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium">{appt.clientName ?? appt.serviceName}</p>
+                        {appt.isCrossBarber && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                            outro plano
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{appt.serviceName}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(appt.appointmentDate).toLocaleDateString("pt-BR", {
                           weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
@@ -452,6 +462,36 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
             )}
           </CardContent>
         </Card>
+
+        {/* Mensalistas atendidos de outros barbeiros */}
+        {(data.crossBarberCount ?? 0) > 0 && (
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base text-orange-700 flex items-center gap-2">
+                <span>🔄</span> Mensalistas de outros barbeiros
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-orange-700 mb-3">
+                {data.crossBarberCount} atendimento{data.crossBarberCount !== 1 ? "s" : ""} realizado{data.crossBarberCount !== 1 ? "s" : ""} para mensalistas com plano em outro barbeiro.
+                O repasse é calculado normalmente para este barbeiro.
+              </p>
+              <div className="space-y-1.5">
+                {data.appointments
+                  .filter((a: any) => a.isCrossBarber && a.status === "completed")
+                  .map((appt: any) => (
+                    <div key={appt.id} className="flex items-center justify-between text-sm py-1 border-b border-orange-100 last:border-0">
+                      <div>
+                        <span className="font-medium text-orange-800">{appt.clientName ?? "—"}</span>
+                        <span className="text-orange-600 ml-2 text-xs">{appt.serviceName}</span>
+                      </div>
+                      <span className="text-orange-700 font-medium">{fmt(appt.servicePrice)}</span>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Info do barbeiro */}
         <Card className="bg-muted/20">

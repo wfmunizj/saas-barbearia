@@ -148,6 +148,8 @@ export const services = pgTable("services", {
   priceInCents: integer("price_in_cents").notNull(),
   // Fichas (peso do serviço no plano ilimitado)
   fichasCount: integer("fichas_count").notNull().default(0),
+  // Valor por ficha deste serviço (pode ser diferente de outros serviços)
+  fichaValueInCents: integer("ficha_value_in_cents").notNull().default(0),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -170,6 +172,8 @@ export const appointments = pgTable("appointments", {
   // Exceção pai/filho: agendamento em nome de outra pessoa (não debita crédito)
   isGuestBooking: boolean("is_guest_booking").default(false),
   guestName: varchar("guest_name", { length: 255 }),
+  // Cross-barber: barbeiro principal do plano do cliente (para rastrear atendimento por outro barbeiro)
+  primaryBarberId: integer("primary_barber_id").references(() => barbers.id, { onDelete: "set null" }),
   // Cancelamento
   cancellationReason: text("cancellation_reason"),
   creditRefunded: boolean("credit_refunded").default(false),
@@ -190,6 +194,8 @@ export const appointmentServices = pgTable("appointment_services", {
   priceInCents: integer("price_in_cents").notNull(),
   durationMinutes: integer("duration_minutes").notNull(),
   fichasCount: integer("fichas_count").notNull().default(0),
+  // Snapshot do valor por ficha no momento do agendamento
+  fichaValueInCents: integer("ficha_value_in_cents").notNull().default(0),
 }, (table) => ({
   uniqueAppointmentService: unique("appointment_services_unique").on(table.appointmentId, table.serviceId),
 }));
@@ -369,6 +375,8 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodStart: timestamp("current_period_start"),
   currentPeriodEnd: timestamp("current_period_end"),
   cancelledAt: timestamp("cancelled_at"),
+  // Cross-barber: barbeiro principal desta assinatura
+  primaryBarberId: integer("primary_barber_id").references(() => barbers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

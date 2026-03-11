@@ -14,9 +14,9 @@ import { clientPortalRouter } from "./clientRouter";
 import {
   barbershops, plans, clientUsers, subscriptions, barbers, appointments, services,
   planServices, barberCommissionRecords, commissionPayments, barberFichaRecords,
-  appointmentServices,
+  appointmentServices, clients,
 } from "../drizzle/schema";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import Stripe from "stripe";
 
 // Helper para extrair barbershopId do contexto do usuário autenticado
@@ -191,10 +191,64 @@ export const appRouter = router({
   // ─── Clients ────────────────────────────────────────────────────────────────
 
   clients: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      const barbershopId = await getBarbershopId((ctx.user as any).id);
-      return db.getClients(barbershopId);
-    }),
+    list: protectedProcedure
+      .input(z.object({
+        filter: z.enum(["all", "active", "inactive", "monthly", "recurring"]).optional().default("all"),
+        inactiveDays: z.number().optional().default(30),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const barbershopId = await getBarbershopId((ctx.user as any).id);
+        const filter = input?.filter ?? "all";
+        const inactiveDays = input?.inactiveDays ?? 30;
+
+        if (filter === "all") {
+          return db.getClients(barbershopId);
+        }
+
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) return [];
+
+        const base = eq(clients.barbershopId, barbershopId);
+
+        if (filter === "active") {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - 30);
+          return dbInstance.select().from(clients)
+            .where(and(base, gte(clients.lastVisit, cutoff)))
+            .orderBy(desc(clients.lastVisit));
+        }
+
+        if (filter === "inactive") {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - inactiveDays);
+          return dbInstance.select().from(clients)
+            .where(and(base, lte(clients.lastVisit, cutoff)))
+            .orderBy(desc(clients.lastVisit));
+        }
+
+        if (filter === "recurring") {
+          return dbInstance.select().from(clients)
+            .where(and(base, gte(clients.totalVisits, 2)))
+            .orderBy(desc(clients.totalVisits));
+        }
+
+        if (filter === "monthly") {
+          return dbInstance.select().from(clients)
+            .where(and(
+              base,
+              sql`EXISTS (
+                SELECT 1 FROM client_users cu
+                INNER JOIN subscriptions s ON s.client_user_id = cu.id
+                WHERE cu.client_id = ${clients.id}
+                  AND cu.barbershop_id = ${barbershopId}
+                  AND s.status = 'active'
+              )`
+            ))
+            .orderBy(desc(clients.lastVisit));
+        }
+
+        return db.getClients(barbershopId);
+      }),
 
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
@@ -385,10 +439,13 @@ export const appRouter = router({
           id: appointments.id,
           status: appointments.status,
           appointmentDate: appointments.appointmentDate,
+          primaryBarberId: appointments.primaryBarberId,
+          clientName: sql<string>`MAX(${clients.name})`,
           serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
           servicePrice: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
         })
           .from(appointments)
+          .leftJoin(clients, eq(clients.id, appointments.clientId))
           .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
           .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
           .where(and(
@@ -397,14 +454,14 @@ export const appRouter = router({
             gte(appointments.appointmentDate, start),
             lte(appointments.appointmentDate, end),
           ))
-          .groupBy(appointments.id, appointments.status, appointments.appointmentDate);
+          .groupBy(appointments.id, appointments.status, appointments.appointmentDate, appointments.primaryBarberId);
 
         const totalAppointments = appts.length;
         const completedAppointments = appts.filter(a => a.status === "completed").length;
         const cancelledAppointments = appts.filter(a => a.status === "cancelled").length;
         const totalRevenueInCents = appts
           .filter(a => a.status === "completed")
-          .reduce((sum, a) => sum + (a.servicePrice ?? 0), 0);
+          .reduce((sum, a) => sum + Number(a.servicePrice ?? 0), 0);
 
         const commissionPercent = parseFloat(barber.commissionPercent ?? "0");
         const commissionAmountInCents = Math.floor(totalRevenueInCents * commissionPercent / 100);
@@ -420,6 +477,13 @@ export const appRouter = router({
         const paidCommission = commissionRecords.filter(r => r.paid).reduce((s, r) => s + r.commissionAmountInCents, 0);
         const pendingCommission = commissionRecords.filter(r => !r.paid).reduce((s, r) => s + r.commissionAmountInCents, 0);
 
+        // Adiciona flag isCrossBarber em cada agendamento
+        const apptsWithFlag = appts.map(a => ({
+          ...a,
+          isCrossBarber: !!(a.primaryBarberId && a.primaryBarberId !== input.barberId),
+        }));
+        const crossBarberCount = apptsWithFlag.filter(a => a.isCrossBarber && a.status === "completed").length;
+
         return {
           barber,
           period: { start, end },
@@ -431,7 +495,8 @@ export const appRouter = router({
           commissionAmountInCents,
           paidCommission,
           pendingCommission,
-          appointments: appts,
+          crossBarberCount,
+          appointments: apptsWithFlag,
         };
       }),
   }),
@@ -452,6 +517,7 @@ export const appRouter = router({
           durationMinutes: z.number(),
           priceInCents: z.number(),
           fichasCount: z.number().int().min(0).default(0),
+          fichaValueInCents: z.number().int().min(0).default(0),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -469,6 +535,7 @@ export const appRouter = router({
           priceInCents: z.number().optional(),
           isActive: z.boolean().optional(),
           fichasCount: z.number().int().min(0).optional(),
+          fichaValueInCents: z.number().int().min(0).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -586,9 +653,11 @@ export const appRouter = router({
               barberId: appointments.barberId,
               clientId: appointments.clientId,
               commissionPercent: barbers.commissionPercent,
-              fichaValueInCents: barbers.fichaValueInCents,
               priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
-              fichasCount: sql<number>`COALESCE(SUM(${appointmentServices.fichasCount}), SUM(${services.fichasCount}), 0)`,
+              // Duração total para calcular fichas (1 ficha por 15 min)
+              durationMinutes: sql<number>`COALESCE(SUM(${appointmentServices.durationMinutes}), MAX(${services.durationMinutes}), 30)`,
+              // Valor por ficha vem do serviço (snapshot em appointmentServices ou fallback para services)
+              fichaValueInCents: sql<number>`COALESCE(MAX(${appointmentServices.fichaValueInCents}), MAX(${services.fichaValueInCents}), 0)`,
             })
               .from(appointments)
               .innerJoin(barbers, eq(appointments.barberId, barbers.id))
@@ -614,15 +683,18 @@ export const appRouter = router({
 
               const isUnlimitedPlan = unlimitedSub.length > 0;
 
-              if (isUnlimitedPlan && (appt.fichasCount ?? 0) > 0) {
-                // Plano ilimitado: criar registro de fichas
-                const totalValueInCents = (appt.fichasCount ?? 0) * (appt.fichaValueInCents ?? 0);
+              if (isUnlimitedPlan) {
+                // Plano ilimitado: fichas calculadas por tempo (1 ficha por 15 min)
+                const durationMin = Number(appt.durationMinutes ?? 30);
+                const fichasCount = Math.ceil(durationMin / 15);
+                const fichaValueInCents = Number(appt.fichaValueInCents ?? 0);
+                const totalValueInCents = fichasCount * fichaValueInCents;
                 await dbInstance.insert(barberFichaRecords).values({
                   barbershopId,
                   barberId: appt.barberId,
                   appointmentId: appt.id,
-                  fichasCount: appt.fichasCount ?? 0,
-                  fichaValueInCents: appt.fichaValueInCents ?? 0,
+                  fichasCount,
+                  fichaValueInCents,
                   totalValueInCents,
                 }).onConflictDoNothing();
               } else {

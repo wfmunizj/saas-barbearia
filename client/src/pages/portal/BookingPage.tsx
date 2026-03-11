@@ -31,6 +31,8 @@ export default function BookingPage() {
   const [isGuestBooking, setIsGuestBooking] = useState(false);
   const [guestName, setGuestName] = useState("");
 
+  const utils = trpc.useUtils();
+
   const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
   const { data: me } = trpc.client.me.useQuery({ slug });
   const { data: barbers_ } = trpc.client.getBarbers.useQuery({ slug });
@@ -59,6 +61,7 @@ export default function BookingPage() {
       } else {
         toast.success("Agendamento confirmado!");
       }
+      utils.client.me.invalidate();
       navigate(`/b/${slug}/minha-conta`);
     },
     onError: (err) => {

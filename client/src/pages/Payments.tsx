@@ -1,10 +1,20 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { DollarSign, CreditCard, TrendingUp } from "lucide-react";
+import { useState } from "react";
 
 export default function Payments() {
-  const { data: payments, isLoading } = trpc.payments.list.useQuery();
+  const today = new Date();
+  const [startDate, setStartDate] = useState(
+    new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
+  );
+  const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
+  const [appliedStart, setAppliedStart] = useState(startDate);
+  const [appliedEnd, setAppliedEnd] = useState(endDate);
+
+  const { data: payments, isLoading } = trpc.payments.list.useQuery({ startDate: appliedStart, endDate: appliedEnd });
   const { data: clients } = trpc.clients.list.useQuery();
 
   const totalRevenue = payments?.reduce((sum, payment) => {
@@ -56,6 +66,35 @@ export default function Payments() {
             Histórico de transações e receitas
           </p>
         </div>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Data início</label>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm bg-background" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Data fim</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm bg-background" />
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setAppliedStart(startDate); setAppliedEnd(endDate); }}>
+                Filtrar
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                const now = new Date();
+                const s = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+                const e = now.toISOString().split("T")[0];
+                setStartDate(s); setEndDate(e);
+                setAppliedStart(s); setAppliedEnd(e);
+              }}>
+                Este mês
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card>

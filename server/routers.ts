@@ -885,14 +885,22 @@ export const appRouter = router({
   // ─── Payments ────────────────────────────────────────────────────────────────
 
   payments: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      const userId = (ctx.user as any).id;
-      const barbershopId = await getBarbershopId(userId);
+    list: protectedProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const userId = (ctx.user as any).id;
+        const barbershopId = await getBarbershopId(userId);
 
-      // Se for barbeiro, filtra apenas pagamentos dos agendamentos dele
-      const linkedBarber = await db.getBarberByUserId(userId);
-      return db.getPayments(barbershopId, linkedBarber?.id ?? undefined);
-    }),
+        // Se for barbeiro, filtra apenas pagamentos dos agendamentos dele
+        const linkedBarber = await db.getBarberByUserId(userId);
+        return db.getPayments(barbershopId, linkedBarber?.id ?? undefined, {
+          startDate: input?.startDate ? new Date(input.startDate) : undefined,
+          endDate:   input?.endDate   ? new Date(input.endDate)   : undefined,
+        });
+      }),
   }),
 
   // ─── Analytics ───────────────────────────────────────────────────────────────

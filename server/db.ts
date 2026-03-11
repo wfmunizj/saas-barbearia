@@ -427,12 +427,22 @@ export async function checkAppointmentConflict(barberId: number, barbershopId: n
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
-export async function getPayments(barbershopId: number, barberId?: number) {
+export async function getPayments(
+  barbershopId: number,
+  barberId?: number,
+  filters?: { startDate?: Date; endDate?: Date }
+) {
   const db = await getDb();
   if (!db) return [];
-  
+
   if (barberId) {
-    // Filtra pagamentos dos agendamentos deste barbeiro
+    const conditions = [
+      eq(payments.barbershopId, barbershopId),
+      eq(appointments.barberId, barberId),
+      ...(filters?.startDate ? [gte(payments.createdAt, filters.startDate)] : []),
+      ...(filters?.endDate   ? [lte(payments.createdAt, filters.endDate)]   : []),
+    ];
+
     return db
       .select({
         id: payments.id,
@@ -449,15 +459,18 @@ export async function getPayments(barbershopId: number, barberId?: number) {
       })
       .from(payments)
       .innerJoin(appointments, eq(payments.appointmentId, appointments.id))
-      .where(and(
-        eq(payments.barbershopId, barbershopId),
-        eq(appointments.barberId, barberId)
-      ))
+      .where(and(...conditions))
       .orderBy(desc(payments.createdAt));
   }
-  
+
+  const conditions = [
+    eq(payments.barbershopId, barbershopId),
+    ...(filters?.startDate ? [gte(payments.createdAt, filters.startDate)] : []),
+    ...(filters?.endDate   ? [lte(payments.createdAt, filters.endDate)]   : []),
+  ];
+
   return db.select().from(payments)
-    .where(eq(payments.barbershopId, barbershopId))
+    .where(and(...conditions))
     .orderBy(desc(payments.createdAt));
 }
 

@@ -446,17 +446,3 @@ export const barberFichaRecords = pgTable("barber_ficha_records", {
 export type BarberFichaRecord = typeof barberFichaRecords.$inferSelect;
 export type InsertBarberFichaRecord = typeof barberFichaRecords.$inferInsert;
 
-// ─── Serviços por Agendamento (múltiplos serviços) ───────────────────────────
-
-export const appointmentServices = pgTable("appointment_services", {
-  id: serial("id").primaryKey(),
-  appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
-  serviceId: integer("service_id").notNull().references(() => services.id, { onDelete: "restrict" }),
-  priceInCents: integer("price_in_cents").notNull(),
-  durationMinutes: integer("duration_minutes").notNull(),
-}, (table) => ({
-  uniqueAppointmentService: unique("appointment_services_unique").on(table.appointmentId, table.serviceId),
-}));
-
-export type AppointmentService = typeof appointmentServices.$inferSelect;
-export type InsertAppointmentService = typeof appointmentServices.$inferInsert;

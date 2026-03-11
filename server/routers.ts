@@ -997,7 +997,7 @@ export const appRouter = router({
       .input(
         z.object({
           template: z.string(),
-          variables: z.record(z.string()),
+          variables: z.record(z.string(), z.string()),
         })
       )
       .query(({ input }) => {

@@ -33,16 +33,17 @@ export default function Services() {
     description: "",
     durationMinutes: "",
     priceInCents: "",
-    fichasCount: "0",
+    fichaValueInCents: "0",
   });
 
-  const { data: services, isLoading, refetch } = trpc.services.list.useQuery();
+  const utils = trpc.useUtils();
+  const { data: services, isLoading } = trpc.services.list.useQuery();
   const { data: appointments } = trpc.appointments.list.useQuery();
 
   const createMutation = trpc.services.create.useMutation({
     onSuccess: () => {
       toast.success("Serviço criado com sucesso!");
-      refetch();
+      utils.services.list.invalidate();
       setIsDialogOpen(false);
       resetForm();
     },
@@ -54,7 +55,7 @@ export default function Services() {
   const updateMutation = trpc.services.update.useMutation({
     onSuccess: () => {
       toast.success("Serviço atualizado com sucesso!");
-      refetch();
+      utils.services.list.invalidate();
       setIsDialogOpen(false);
       resetForm();
     },
@@ -66,7 +67,7 @@ export default function Services() {
   const deleteMutation = trpc.services.delete.useMutation({
     onSuccess: () => {
       toast.success("Serviço removido com sucesso!");
-      refetch();
+      utils.services.list.invalidate();
     },
     onError: (error) => {
       toast.error("Erro ao remover serviço: " + error.message);
@@ -74,7 +75,7 @@ export default function Services() {
   });
 
   const resetForm = () => {
-    setFormData({ name: "", description: "", durationMinutes: "", priceInCents: "", fichasCount: "0" });
+    setFormData({ name: "", description: "", durationMinutes: "", priceInCents: "", fichaValueInCents: "0" });
     setEditingService(null);
   };
 
@@ -85,7 +86,7 @@ export default function Services() {
       description: formData.description || undefined,
       durationMinutes: parseInt(formData.durationMinutes),
       priceInCents: Math.round(parseFloat(formData.priceInCents) * 100),
-      fichasCount: parseInt(formData.fichasCount) || 0,
+      fichaValueInCents: Math.round(parseFloat(formData.fichaValueInCents || "0") * 100),
     };
 
     if (editingService) {
@@ -102,7 +103,7 @@ export default function Services() {
       description: service.description || "",
       durationMinutes: service.durationMinutes.toString(),
       priceInCents: (service.priceInCents / 100).toFixed(2),
-      fichasCount: (service.fichasCount ?? 0).toString(),
+      fichaValueInCents: ((service.fichaValueInCents ?? 0) / 100).toFixed(2),
     });
     setIsDialogOpen(true);
   };
@@ -209,21 +210,29 @@ export default function Services() {
                       />
                     </div>
                   </div>
-                  <div className="border-t pt-4 space-y-2">
-                    <Label htmlFor="fichasCount" className="flex items-center gap-1">
-                      <Ticket className="h-4 w-4" /> Fichas geradas (plano ilimitado)
-                    </Label>
-                    <Input
-                      id="fichasCount"
-                      type="number"
-                      min="0"
-                      value={formData.fichasCount}
-                      onChange={(e) => setFormData({ ...formData, fichasCount: e.target.value })}
-                      placeholder="0"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Quantidade de fichas que o barbeiro recebe ao realizar este serviço em um cliente de plano ilimitado. 0 = não gera fichas.
-                    </p>
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="fichaValueInCents" className="flex items-center gap-1">
+                        <Ticket className="h-4 w-4" /> Valor por Ficha (R$) — plano ilimitado
+                      </Label>
+                      <Input
+                        id="fichaValueInCents"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.fichaValueInCents}
+                        onChange={(e) => setFormData({ ...formData, fichaValueInCents: e.target.value })}
+                        placeholder="0.00"
+                      />
+                      {formData.durationMinutes && (
+                        <p className="text-xs text-primary font-medium">
+                          {Math.ceil(parseInt(formData.durationMinutes) / 15)} ficha{Math.ceil(parseInt(formData.durationMinutes) / 15) !== 1 ? "s" : ""} geradas automaticamente (1 ficha por 15 min)
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Valor que o barbeiro recebe por ficha ao realizar este serviço em cliente de plano ilimitado. A quantidade de fichas é calculada pela duração (1 ficha a cada 15 min).
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -336,10 +345,11 @@ export default function Services() {
                           <span>R$ {(service.priceInCents / 100).toFixed(2)}</span>
                         </div>
                       </div>
-                      {(service.fichasCount ?? 0) > 0 && (
-                        <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
+                      {(service.fichaValueInCents ?? 0) > 0 && (
+                        <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
                           <Ticket className="h-3 w-3" />
-                          {service.fichasCount} ficha{service.fichasCount !== 1 ? "s" : ""} (plano ilimitado)
+                          {Math.ceil(service.durationMinutes / 15)} ficha{Math.ceil(service.durationMinutes / 15) !== 1 ? "s" : ""}
+                          {" "}× R$ {((service.fichaValueInCents ?? 0) / 100).toFixed(2)} = R$ {((Math.ceil(service.durationMinutes / 15) * (service.fichaValueInCents ?? 0)) / 100).toFixed(2)}
                         </div>
                       )}
                     </div>

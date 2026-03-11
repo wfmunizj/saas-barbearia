@@ -12,10 +12,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Step = "barber" | "service" | "date" | "time" | "confirm";
+type Step = "barber" | "plan" | "service" | "date" | "time" | "confirm";
 
 const STEPS: { key: Step; label: string }[] = [
-  { key: "barber", label: "Barbeiro" },
+  { key: "barber", label: "Equipe" },
+  { key: "plan", label: "Plano" },
   { key: "service", label: "Serviço" },
   { key: "date", label: "Data" },
   { key: "time", label: "Horário" },
@@ -44,6 +45,7 @@ export default function BookingPage() {
   const { data: me } = trpc.client.me.useQuery({ slug });
   const { data: barbers_ } = trpc.client.getBarbers.useQuery({ slug });
   const { data: services_ } = trpc.client.getServices.useQuery({ slug });
+  const { data: plans_ } = trpc.client.getPlans.useQuery({ slug });
   const { data: slots, isLoading: slotsLoading } = trpc.client.getAvailableSlots.useQuery(
     { slug, barberId: selectedBarber?.id ?? 0, date: selectedDate },
     { enabled: !!selectedBarber && !!selectedDate }
@@ -352,9 +354,19 @@ export default function BookingPage() {
                 </button>
               );
             })}
+            {/* Aviso: barbeiro diferente do plano */}
+            {selectedBarber && me?.subscription?.subscription?.primaryBarberId &&
+             selectedBarber.id !== me.subscription.subscription.primaryBarberId && (
+              <div className="rounded-xl p-3 text-sm" style={{ background: "rgba(255, 200, 50, 0.12)", border: "1px solid rgba(255, 200, 50, 0.3)" }}>
+                <p className="font-semibold" style={{ color: "#fbbf24" }}>Barbeiro diferente do seu plano</p>
+                <p className="mt-0.5 text-white/60 text-xs">
+                  Você está agendando com um barbeiro diferente do seu plano habitual. O repasse será calculado normalmente para quem realizar o atendimento.
+                </p>
+              </div>
+            )}
             <button
               disabled={!selectedBarber}
-              onClick={() => setStep("service")}
+              onClick={() => setStep("plan")}
               className="w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer disabled:opacity-40 mt-2"
               style={
                 selectedBarber
@@ -371,7 +383,99 @@ export default function BookingPage() {
           </div>
         )}
 
-        {/* ── Step 2: Serviço ──────────────────────────────────────────── */}
+        {/* ── Step 2: Plano ────────────────────────────────────────────── */}
+        {step === "plan" && (
+          <div className="space-y-3 portal-step-animate">
+            <h2
+              className="text-xl font-bold text-white"
+              style={{ fontFamily: "'Bodoni Moda', serif" }}
+            >
+              Plano de assinatura
+            </h2>
+
+            {/* Plano ativo do cliente */}
+            {me?.subscription && (
+              <div
+                className="p-4 rounded-2xl"
+                style={{
+                  background: `${primaryColor}12`,
+                  border: `1.5px solid ${primaryColor}40`,
+                }}
+              >
+                <p className="text-xs text-white/40 uppercase tracking-wider mb-1">Seu plano atual</p>
+                <p className="font-bold text-white">{(me.subscription.plan as any)?.name}</p>
+                <p className="text-xs mt-1" style={{ color: `${primaryColor}cc` }}>
+                  {isUnlimitedPlan
+                    ? "Plano ilimitado — use este agendamento"
+                    : `${creditsRemaining} crédito${creditsRemaining !== 1 ? "s" : ""} disponíve${creditsRemaining !== 1 ? "is" : "l"}`}
+                </p>
+              </div>
+            )}
+
+            {/* Planos disponíveis */}
+            {!me?.subscription && plans_ && plans_.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-white/40 uppercase tracking-wider">Planos disponíveis</p>
+                {plans_.map((plan: any) => (
+                  <div
+                    key={plan.id}
+                    className="p-4 rounded-2xl"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1.5px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-white">{plan.name}</p>
+                        {plan.description && (
+                          <p className="text-xs text-white/40 mt-0.5">{plan.description}</p>
+                        )}
+                      </div>
+                      <span
+                        className="text-sm font-bold px-3 py-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}
+                      >
+                        R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}
+                        <span className="text-[10px] text-white/30">/mês</span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-white/30 text-center pt-1">
+                  Para assinar um plano, acesse <span style={{ color: primaryColor }}>Minha Conta</span>
+                </p>
+              </div>
+            )}
+
+            {!me?.subscription && (!plans_ || plans_.length === 0) && (
+              <p className="text-sm text-white/30 text-center py-4">Nenhum plano disponível — agendamento avulso</p>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setStep("barber")}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                Voltar
+              </button>
+              <button
+                onClick={() => setStep("service")}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer"
+                style={{
+                  backgroundColor: primaryColor,
+                  color: secondaryColor,
+                  boxShadow: `0 4px 25px ${primaryColor}28`,
+                }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3: Serviço ──────────────────────────────────────────── */}
         {step === "service" && (
           <div className="space-y-3 portal-step-animate">
             <h2
@@ -444,7 +548,7 @@ export default function BookingPage() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => { setSelectedServices([]); setStep("barber"); }}
+                onClick={() => { setSelectedServices([]); setStep("plan"); }}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >

@@ -232,7 +232,7 @@ export const clientPortalRouter = router({
 
       // Busca todos os serviços selecionados e calcula totais
       const selectedServices = await db
-        .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes, fichasCount: services.fichasCount })
+        .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes, fichasCount: services.fichasCount, fichaValueInCents: services.fichaValueInCents })
         .from(services)
         .where(and(inArray(services.id, input.serviceIds), eq(services.barbershopId, barbershop.id), eq(services.isActive, true)));
 
@@ -244,7 +244,7 @@ export const clientPortalRouter = router({
 
       // ── Agendamento com crédito de assinatura ─────────────────────────────
       if (input.useSubscriptionCredit && !input.isGuestBooking) {
-        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId })
+        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId, primaryBarberId: subscriptions.primaryBarberId })
           .from(subscriptions).where(
             and(
               eq(subscriptions.clientUserId, clientUser.id),
@@ -292,6 +292,14 @@ export const clientPortalRouter = router({
           });
         }
 
+        // Determina barbeiro principal: usa o da assinatura ou registra o atual como principal
+        const resolvedPrimaryBarberId = sub.primaryBarberId ?? input.barberId;
+        if (!sub.primaryBarberId) {
+          await db.update(subscriptions)
+            .set({ primaryBarberId: input.barberId, updatedAt: new Date() })
+            .where(eq(subscriptions.id, sub.id));
+        }
+
         // Cria o agendamento (atômico: appointment + appointmentServices)
         const [appointment] = await db.transaction(async (tx) => {
           const [appt] = await tx.insert(appointments).values({
@@ -303,6 +311,7 @@ export const clientPortalRouter = router({
             notes: input.notes,
             status: "confirmed",
             isGuestBooking: false,
+            primaryBarberId: resolvedPrimaryBarberId,
           }).returning();
 
           await tx.insert(appointmentServices).values(
@@ -312,6 +321,7 @@ export const clientPortalRouter = router({
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
               fichasCount: s.fichasCount,
+              fichaValueInCents: s.fichaValueInCents ?? 0,
             }))
           );
 
@@ -352,6 +362,7 @@ export const clientPortalRouter = router({
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
               fichasCount: s.fichasCount,
+              fichaValueInCents: s.fichaValueInCents ?? 0,
             }))
           );
 
@@ -392,6 +403,7 @@ export const clientPortalRouter = router({
               priceInCents: s.priceInCents,
               durationMinutes: s.durationMinutes,
               fichasCount: s.fichasCount,
+              fichaValueInCents: s.fichaValueInCents ?? 0,
             }))
           );
 
@@ -451,6 +463,7 @@ export const clientPortalRouter = router({
             priceInCents: s.priceInCents,
             durationMinutes: s.durationMinutes,
             fichasCount: s.fichasCount,
+            fichaValueInCents: s.fichaValueInCents ?? 0,
           }))
         );
 

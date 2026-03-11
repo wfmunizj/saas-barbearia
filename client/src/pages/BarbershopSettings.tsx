@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Settings, Palette, Save } from "lucide-react";
+import { Settings, Palette, Save, CreditCard, CheckCircle, XCircle, ExternalLink, Copy } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -230,6 +230,135 @@ export default function BarbershopSettings() {
           </CardContent>
         </Card>
       </form>
+
+      {/* ── Stripe: Pagamentos ──────────────────────────────────────────────── */}
+      <div className="max-w-2xl space-y-4 mt-2">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CreditCard className="h-4 w-4" /> Pagamentos (Stripe)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Status da conta Connect */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Stripe Connect</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Necessário para receber pagamentos dos clientes diretamente.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {barbershop?.stripeConnectStatus === "active" ? (
+                  <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full font-medium">
+                    <CheckCircle className="h-3.5 w-3.5" /> Ativo
+                  </span>
+                ) : barbershop?.stripeConnectStatus === "pending" ? (
+                  <span className="flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 px-2.5 py-1 rounded-full font-medium">
+                    <XCircle className="h-3.5 w-3.5" /> Pendente
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full font-medium">
+                    <XCircle className="h-3.5 w-3.5" /> Não configurado
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open("/api/stripe/connect/onboarding", "_blank")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  {barbershop?.stripeConnectStatus === "active" ? "Gerenciar" : "Configurar"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Checklist de produção */}
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Checklist para produção</p>
+
+              <div className="space-y-2.5 text-sm">
+                <div className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">
+                    {barbershop?.stripeConnectStatus === "active"
+                      ? <CheckCircle className="h-4 w-4 text-green-600" />
+                      : <XCircle className="h-4 w-4 text-muted-foreground" />}
+                  </span>
+                  <div>
+                    <p className="font-medium">Variáveis de ambiente no Railway</p>
+                    <code className="text-xs text-muted-foreground block mt-0.5">
+                      STRIPE_SECRET_KEY=sk_live_...<br />
+                      STRIPE_WEBHOOK_SECRET=whsec_...
+                    </code>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Webhook no Stripe Dashboard</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Adicione o endpoint abaixo em{" "}
+                      <a
+                        href="https://dashboard.stripe.com/webhooks"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                      >
+                        Developers → Webhooks
+                      </a>
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">
+                        {typeof window !== "undefined" ? window.location.origin : "https://SEU-DOMINIO"}/api/stripe/webhook
+                      </code>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/stripe/webhook`;
+                          navigator.clipboard.writeText(url);
+                          toast.success("URL copiada!");
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Eventos necessários: <code className="text-xs">checkout.session.completed</code>,{" "}
+                      <code className="text-xs">customer.subscription.*</code>,{" "}
+                      <code className="text-xs">invoice.payment_*</code>,{" "}
+                      <code className="text-xs">account.updated</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">
+                    {barbershop?.stripeConnectStatus === "active"
+                      ? <CheckCircle className="h-4 w-4 text-green-600" />
+                      : <XCircle className="h-4 w-4 text-muted-foreground" />}
+                  </span>
+                  <div>
+                    <p className="font-medium">Onboarding Stripe Connect concluído</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Complete o cadastro KYC no Stripe para ativar recebimentos.
+                      Status atual:{" "}
+                      <span className="font-medium">
+                        {barbershop?.stripeConnectStatus === "active" ? "✅ Ativo" :
+                         barbershop?.stripeConnectStatus === "pending" ? "⏳ Aguardando aprovação" :
+                         "❌ Não iniciado"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   );
 }

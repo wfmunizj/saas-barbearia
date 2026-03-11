@@ -380,11 +380,16 @@ export async function getAppointments(
       cancelledAt: appointments.cancelledAt,
       createdAt: appointments.createdAt,
       updatedAt: appointments.updatedAt,
-      serviceName: sql<string>`string_agg(${services.name}, ', ' ORDER BY ${services.name})`,
+      serviceName: sql<string>`string_agg(DISTINCT ${services.name}, ', ' ORDER BY ${services.name})`,
+      durationMinutes: sql<number>`COALESCE(SUM(${appointmentServices.durationMinutes}), MAX(${services.durationMinutes}), 30)`,
+      barberName: sql<string>`MAX(${barbers.name})`,
+      clientName: sql<string>`MAX(${clients.name})`,
     })
     .from(appointments)
     .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
     .leftJoin(services, eq(services.id, appointmentServices.serviceId))
+    .leftJoin(barbers, eq(barbers.id, appointments.barberId))
+    .leftJoin(clients, eq(clients.id, appointments.clientId))
     .where(and(...conditions))
     .groupBy(appointments.id)
     .orderBy(desc(appointments.appointmentDate));

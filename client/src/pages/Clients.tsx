@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -18,11 +19,23 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+type FilterType = "all" | "active" | "inactive" | "monthly" | "recurring";
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: "Todos",
+  active: "Ativos",
+  inactive: "Inativos",
+  monthly: "Mensalistas",
+  recurring: "Recorrentes",
+};
+
 export default function Clients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [inactiveDays, setInactiveDays] = useState(30);
+
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -30,11 +43,19 @@ export default function Clients() {
     notes: "",
   });
 
-  const { data: clients, isLoading, refetch } = trpc.clients.list.useQuery();
+  const utils = trpc.useUtils();
+  const { data: clientsList, isLoading } = trpc.clients.list.useQuery(
+    { filter: activeFilter, inactiveDays }
+  );
+
+  function invalidateClients() {
+    utils.clients.list.invalidate();
+  }
+
   const createMutation = trpc.clients.create.useMutation({
     onSuccess: () => {
       toast.success("Cliente criado com sucesso!");
-      refetch();
+      invalidateClients();
       setIsDialogOpen(false);
       resetForm();
     },
@@ -46,7 +67,7 @@ export default function Clients() {
   const updateMutation = trpc.clients.update.useMutation({
     onSuccess: () => {
       toast.success("Cliente atualizado com sucesso!");
-      refetch();
+      invalidateClients();
       setIsDialogOpen(false);
       resetForm();
     },
@@ -58,7 +79,7 @@ export default function Clients() {
   const deleteMutation = trpc.clients.delete.useMutation({
     onSuccess: () => {
       toast.success("Cliente removido com sucesso!");
-      refetch();
+      invalidateClients();
     },
     onError: (error) => {
       toast.error("Erro ao remover cliente: " + error.message);
@@ -96,7 +117,7 @@ export default function Clients() {
     }
   };
 
-  const filteredClients = clients?.filter((client) =>
+  const filteredClients = clientsList?.filter((client) =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.phone.includes(searchTerm)
   );
@@ -194,17 +215,51 @@ export default function Clients() {
         </div>
 
         <Card>
-          <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome ou telefone..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+          <CardHeader className="space-y-3">
+            {/* Barra de busca */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou telefone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {/* Chips de filtro */}
+            <div className="flex flex-wrap gap-2 items-center">
+              {(Object.keys(FILTER_LABELS) as FilterType[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setActiveFilter(f)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                    activeFilter === f
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border hover:border-primary/60"
+                  }`}
+                >
+                  {FILTER_LABELS[f]}
+                </button>
+              ))}
+              {activeFilter === "inactive" && (
+                <div className="flex items-center gap-1 ml-2 text-xs text-muted-foreground">
+                  <span>há mais de</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={inactiveDays}
+                    onChange={(e) => setInactiveDays(Number(e.target.value))}
+                    className="w-14 border rounded px-2 py-0.5 text-xs bg-background"
+                  />
+                  <span>dias</span>
+                </div>
+              )}
+              {clientsList && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {filteredClients?.length ?? 0} cliente{filteredClients?.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -222,7 +277,15 @@ export default function Clients() {
                     className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                   >
                     <div className="flex-1">
-                      <h3 className="font-semibold">{client.name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold">{client.name}</h3>
+                        {activeFilter === "monthly" && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Mensalista</Badge>
+                        )}
+                        {activeFilter === "recurring" && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{client.totalVisits}x visitas</Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {client.phone}
                         {client.email && ` • ${client.email}`}
@@ -233,8 +296,8 @@ export default function Clients() {
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground mt-1">
-                        Total de visitas: {client.totalVisits || 0}
-                        {client.lastVisit && ` • Última visita: ${new Date(client.lastVisit).toLocaleDateString('pt-BR')}`}
+                        {client.totalVisits || 0} visita{client.totalVisits !== 1 ? "s" : ""}
+                        {client.lastVisit && ` • Última: ${new Date(client.lastVisit).toLocaleDateString('pt-BR')}`}
                       </p>
                     </div>
                     <div className="flex gap-2">

@@ -434,7 +434,19 @@ export async function getPayments(barbershopId: number, barberId?: number) {
   if (barberId) {
     // Filtra pagamentos dos agendamentos deste barbeiro
     return db
-      .select()
+      .select({
+        id: payments.id,
+        barbershopId: payments.barbershopId,
+        appointmentId: payments.appointmentId,
+        clientId: payments.clientId,
+        amountInCents: payments.amountInCents,
+        status: payments.status,
+        paymentMethod: payments.paymentMethod,
+        stripePaymentIntentId: payments.stripePaymentIntentId,
+        stripeSessionId: payments.stripeSessionId,
+        createdAt: payments.createdAt,
+        updatedAt: payments.updatedAt,
+      })
       .from(payments)
       .innerJoin(appointments, eq(payments.appointmentId, appointments.id))
       .where(and(

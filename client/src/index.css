@@ -175,3 +175,45 @@
     }
   }
 }
+
+/* ─── Portal Dark Theme ───────────────────────────────────────────────────────── */
+@keyframes portal-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes portal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes portal-step-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.portal-animate-in {
+  animation: portal-slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.portal-animate-in-delay {
+  animation: portal-slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+.portal-step-animate {
+  animation: portal-step-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.portal-dark-input::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}
+.portal-dark-input {
+  outline: none;
+  caret-color: white;
+}
+.portal-dark-input:-webkit-autofill,
+.portal-dark-input:-webkit-autofill:hover,
+.portal-dark-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: white;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255,255,255,0.06) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+.portal-dark-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}

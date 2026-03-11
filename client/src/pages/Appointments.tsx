@@ -314,7 +314,6 @@ export default function Appointments() {
                       {dayAppointments.map((appointment) => {
                         const client = clients?.find(c => c.id === appointment.clientId);
                         const barber = barbers?.find(b => b.id === appointment.barberId);
-                        const service = services?.find(s => s.id === appointment.serviceId);
                         
                         return (
                           <div
@@ -334,7 +333,7 @@ export default function Appointments() {
                               <p className="font-medium">{client?.name || `Cliente #${appointment.clientId}`}</p>
                               <p className="text-sm text-muted-foreground">
                                 Barbeiro: {barber?.name || `#${appointment.barberId}`} • 
-                                Serviço: {service?.name || `#${appointment.serviceId}`}
+                                Serviço: {(appointment as any).serviceName || "—"}
                               </p>
                               {appointment.notes && (
                                 <p className="text-sm text-muted-foreground mt-1">

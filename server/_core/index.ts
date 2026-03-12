@@ -6,7 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { handleStripeWebhook } from "../stripe-webhook";
+import { handleMpWebhook } from "../mp-webhook";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
@@ -17,8 +17,8 @@ import { getDb } from "../db";
 import { users, barbershops } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { barberUserRouter } from "../barberUserRoutes";
-import { saasRouter } from "../saasSubscriptionRoutes";
-import { connectRouter } from "../stripeConnectRoutes";
+import { mpSaasRouter } from "../mpSaasRoutes";
+import { mpConnectRouter } from "../mpConnectRoutes";
 import { scheduleAutoComplete } from "../autoComplete";
 
 
@@ -45,11 +45,11 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Stripe webhook MUST be registered BEFORE express.json() to preserve raw body
+  // MP webhook MUST be registered BEFORE express.json() to preserve raw body
   app.post(
-    "/api/stripe/webhook",
-    express.raw({ type: "application/json" }),
-    handleStripeWebhook
+    "/api/mp/webhook",
+    express.raw({ type: "*/*" }),
+    handleMpWebhook
   );
 
   // Configure body parser with larger size limit for file uploads
@@ -63,8 +63,8 @@ async function startServer() {
   app.use("/api/auth", authRouter);
   app.use("/api/client", clientAuthRouter);
   app.use("/api/barber-users", barberUserRouter);
-  app.use("/api/saas", saasRouter);
-  app.use("/api/connect", connectRouter);
+  app.use("/api/saas", mpSaasRouter);
+  app.use("/api/mp", mpConnectRouter);
   // Development helper: cria sessão mock automaticamente para o primeiro owner
   // if (process.env.NODE_ENV === "development") {
   //   app.use(async (req, res, next) => {

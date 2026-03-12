@@ -36,11 +36,11 @@ export const barbershops = pgTable("barbershops", {
   logoUrl: text("logo_url"),
   plan: planEnum("plan").default("free").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
-  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
-  // Stripe Connect (recebimentos diretos + taxa de plataforma)
-  stripeConnectAccountId: varchar("stripe_connect_account_id", { length: 255 }),
-  stripeConnectStatus: varchar("stripe_connect_status", { length: 50 }), // 'pending' | 'active' | 'restricted'
+  // Mercado Pago Connect (recebimentos diretos via Marketplace OAuth)
+  mpAccessToken: text("mp_access_token"),
+  mpRefreshToken: text("mp_refresh_token"),
+  mpUserId: varchar("mp_user_id", { length: 255 }),
+  mpConnectStatus: varchar("mp_connect_status", { length: 50 }).default("not_connected"), // 'not_connected' | 'active'
   // WhatsApp / Evolution API
   whatsappInstanceName: varchar("whatsapp_instance_name", { length: 255 }),
   whatsappApiUrl: text("whatsapp_api_url"),
@@ -213,13 +213,11 @@ export const payments = pgTable("payments", {
   amountInCents: integer("amount_in_cents").notNull(),
   status: paymentStatusEnum("status").default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  mpPaymentId: varchar("mp_payment_id", { length: 255 }),
+  mpPreferenceId: varchar("mp_preference_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  uniqueSessionId: unique("payments_stripe_session_id_unique").on(table.stripeSessionId),
-}));
+});
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
@@ -323,8 +321,8 @@ export const plans = pgTable("plans", {
   description: text("description"),
   priceInCents: integer("price_in_cents").notNull(),           // 12000 = R$120,00
   creditsPerMonth: integer("credits_per_month").notNull(),     // qtd de agendamentos incluídos (0 = ilimitado)
-  stripePriceId: varchar("stripe_price_id", { length: 255 }), // price_xxx do Stripe
-  stripeProductId: varchar("stripe_product_id", { length: 255 }),
+  // Mercado Pago: ID do Preapproval Plan para assinaturas recorrentes
+  mpPreapprovalPlanId: varchar("mp_preapproval_plan_id", { length: 255 }),
   // Tipo de plano: monthly_limited (créditos), unlimited (sem limite), single_cut (avulso)
   planType: varchar("plan_type", { length: 30 }).default("monthly_limited"),
   // Dias da semana permitidos (JSON array, ex: [2,3,4] = Ter-Qua-Qui). null = todos os dias
@@ -349,7 +347,7 @@ export const clientUsers = pgTable("client_users", {
   email: varchar("email", { length: 320 }).notNull(),
   passwordHash: text("password_hash").notNull(),
   phone: varchar("phone", { length: 20 }),
-  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  mpCustomerId: varchar("mp_customer_id", { length: 255 }),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -368,8 +366,8 @@ export const subscriptions = pgTable("subscriptions", {
   barbershopId: integer("barbershop_id").notNull().references(() => barbershops.id, { onDelete: "cascade" }),
   clientUserId: integer("client_user_id").notNull().references(() => clientUsers.id, { onDelete: "cascade" }),
   planId: integer("plan_id").references(() => plans.id, { onDelete: "set null" }),
-  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }).unique(),
-  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  mpSubscriptionId: varchar("mp_subscription_id", { length: 255 }).unique(),
+  mpPayerId: varchar("mp_payer_id", { length: 255 }),
   status: subscriptionStatusEnum("status").default("trialing").notNull(),
   creditsRemaining: integer("credits_remaining").default(0).notNull(),
   currentPeriodStart: timestamp("current_period_start"),

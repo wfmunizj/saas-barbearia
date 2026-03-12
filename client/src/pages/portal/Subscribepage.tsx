@@ -182,7 +182,7 @@ export default function SubscribePage() {
             )}
           </Button>
           <p className="text-xs text-center text-muted-foreground">
-            Pagamento seguro via Stripe. Cancele a qualquer momento.
+            Pagamento seguro via Mercado Pago. Cancele a qualquer momento.
           </p>
         </div>
 

@@ -13,7 +13,7 @@
 import { Request, Response } from "express";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 
@@ -211,6 +211,27 @@ async function handleSubscriptionEvent(subscriptionId: string) {
       .from(clientUsers)
       .where(and(eq(clientUsers.email, payerEmail), eq(clientUsers.barbershopId, plan.barbershopId)))
       .limit(1);
+
+    // Fallback 3: busca a assinatura pending mais recente para este planId.
+    // Isso cobre o caso onde o e-mail da conta MP é diferente do e-mail cadastrado na plataforma.
+    // A assinatura pending é criada em createSubscriptionCheckout antes de redirecionar ao MP.
+    if (!clientUser) {
+      const [pendingSub] = await db
+        .select({ clientUserId: subscriptions.clientUserId })
+        .from(subscriptions)
+        .where(and(eq(subscriptions.planId, plan.id), eq(subscriptions.status, "pending")))
+        .orderBy(desc(subscriptions.updatedAt))
+        .limit(1);
+
+      if (pendingSub) {
+        [clientUser] = await db
+          .select()
+          .from(clientUsers)
+          .where(eq(clientUsers.id, pendingSub.clientUserId))
+          .limit(1);
+        console.log(`[MPWebhook] Cliente identificado via pending subscription — clientUser:${clientUser?.id}`);
+      }
+    }
   }
 
   if (!clientUser || !plan) {

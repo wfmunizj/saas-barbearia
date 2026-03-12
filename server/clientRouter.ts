@@ -512,6 +512,34 @@ export const clientPortalRouter = router({
         // Não chamamos POST /preapproval pois o MP exige card_token_id (tokenização de cartão
         // feita pelo pagador no lado deles). A URL abaixo é a página hospedada pelo MP onde
         // o cliente entra com os dados do cartão e confirma a assinatura.
+
+        // Pré-criar assinatura como "pending" para o webhook identificar o cliente ao retornar.
+        // O e-mail da conta MP pode ser diferente do e-mail cadastrado na plataforma,
+        // então guardamos clientUserId aqui para o webhook encontrar depois.
+        if (clientUser) {
+          const [existingSub] = await db
+            .select({ id: subscriptions.id })
+            .from(subscriptions)
+            .where(eq(subscriptions.clientUserId, clientUser.id))
+            .limit(1);
+
+          if (existingSub) {
+            await db
+              .update(subscriptions)
+              .set({ planId: plan.id, barbershopId: plan.barbershopId, status: "pending", updatedAt: new Date() })
+              .where(eq(subscriptions.id, existingSub.id));
+          } else {
+            await db.insert(subscriptions).values({
+              clientUserId: clientUser.id,
+              planId: plan.id,
+              barbershopId: plan.barbershopId,
+              status: "pending",
+              creditsRemaining: 0,
+            });
+          }
+          console.log(`[SubscriptionCheckout] Pending criado — clientUser:${clientUser.id} plano:${plan.id}`);
+        }
+
         const checkoutUrl = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${plan.mpPreapprovalPlanId}`;
         console.log(`[SubscriptionCheckout] Redirecionando para checkout MP do plano ${plan.mpPreapprovalPlanId}`);
         return { checkoutUrl };

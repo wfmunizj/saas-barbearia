@@ -505,7 +505,10 @@ export const clientPortalRouter = router({
       if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plano não encontrado" });
 
       const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
-      const accessToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
+      // Preapproval Plans são sempre criados com o token da plataforma (MP_ACCESS_TOKEN).
+      // Usar platformToken para chamadas /preapproval — barbershopToken apenas para Checkout Pro.
+      const platformToken = MP_ACCESS_TOKEN;
+      const barbershopToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
       if (plan.mpPreapprovalPlanId) {
         // Assinatura recorrente via Preapproval Plan do MP
@@ -521,14 +524,14 @@ export const clientPortalRouter = router({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${platformToken}`,
           },
           body: JSON.stringify(preapprovalBody),
         });
 
         if (!mpRes.ok) {
           const err = await mpRes.text();
-          console.error("[SubscriptionCheckout] Erro MP Preapproval:", err);
+          console.error(`[SubscriptionCheckout] Erro MP Preapproval (HTTP ${mpRes.status}):`, err);
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar assinatura" });
         }
 
@@ -562,14 +565,14 @@ export const clientPortalRouter = router({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${barbershopToken}`,
           },
           body: JSON.stringify(preferenceBody),
         });
 
         if (!mpRes.ok) {
           const err = await mpRes.text();
-          console.error("[SubscriptionCheckout] Erro MP Preference:", err);
+          console.error(`[SubscriptionCheckout] Erro MP Preference (HTTP ${mpRes.status}):`, err);
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar checkout" });
         }
 

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Settings, Palette, Save, CreditCard, CheckCircle, XCircle, ExternalLink, Copy } from "lucide-react";
+import { Settings, Palette, Save, CreditCard, CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -274,83 +274,6 @@ export default function BarbershopSettings() {
               </div>
             </div>
 
-            {/* Checklist de produção */}
-            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Checklist para produção</p>
-
-              <div className="space-y-2.5 text-sm">
-                <div className="flex gap-2">
-                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Variáveis de ambiente no Railway</p>
-                    <code className="text-xs text-muted-foreground block mt-0.5">
-                      MP_ACCESS_TOKEN=APP_USR-...<br />
-                      MP_CLIENT_ID=...<br />
-                      MP_CLIENT_SECRET=...<br />
-                      BASE_URL=https://saas-barbearia-production.up.railway.app
-                    </code>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Webhook no Mercado Pago</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Configure em{" "}
-                      <a
-                        href="https://www.mercadopago.com.br/developers/panel/notifications"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        Developers → Notificações
-                      </a>
-                    </p>
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">
-                        {typeof window !== "undefined" ? window.location.origin : "https://SEU-DOMINIO"}/api/mp/webhook
-                      </code>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => {
-                          const url = `${window.location.origin}/api/mp/webhook`;
-                          navigator.clipboard.writeText(url);
-                          toast.success("URL copiada!");
-                        }}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Eventos: <code className="text-xs">payment</code>,{" "}
-                      <code className="text-xs">subscription_preapproval</code>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <span className="shrink-0 mt-0.5">
-                    {barbershop?.mpConnectStatus === "active"
-                      ? <CheckCircle className="h-4 w-4 text-green-600" />
-                      : <XCircle className="h-4 w-4 text-muted-foreground" />}
-                  </span>
-                  <div>
-                    <p className="font-medium">Conta MP conectada via OAuth</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Clique em "Conectar" acima e autorize o acesso.
-                      Status atual:{" "}
-                      <span className="font-medium">
-                        {barbershop?.mpConnectStatus === "active" ? "✅ Conectado" : "❌ Não conectado"}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

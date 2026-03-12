@@ -505,38 +505,16 @@ export const clientPortalRouter = router({
       if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plano não encontrado" });
 
       const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
-      // Preapproval Plans são sempre criados com o token da plataforma (MP_ACCESS_TOKEN).
-      // Usar platformToken para chamadas /preapproval — barbershopToken apenas para Checkout Pro.
-      const platformToken = MP_ACCESS_TOKEN;
       const barbershopToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
       if (plan.mpPreapprovalPlanId) {
-        // Assinatura recorrente via Preapproval Plan do MP
-        const preapprovalBody = {
-          preapproval_plan_id: plan.mpPreapprovalPlanId,
-          payer_email: clientUser.email,
-          back_url: `${origin}/b/${input.slug}/minha-conta?subscription=success`,
-          external_reference: `clientUserId:${clientUser.id}|planId:${plan.id}`,
-          notification_url: `${BASE_URL}/api/mp/webhook`,
-        };
-
-        const mpRes = await fetch("https://api.mercadopago.com/preapproval", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${platformToken}`,
-          },
-          body: JSON.stringify(preapprovalBody),
-        });
-
-        if (!mpRes.ok) {
-          const err = await mpRes.text();
-          console.error(`[SubscriptionCheckout] Erro MP Preapproval (HTTP ${mpRes.status}):`, err);
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar assinatura" });
-        }
-
-        const sub = await mpRes.json() as any;
-        return { checkoutUrl: sub.init_point };
+        // Assinatura recorrente: redireciona direto para a página de checkout do plano MP.
+        // Não chamamos POST /preapproval pois o MP exige card_token_id (tokenização de cartão
+        // feita pelo pagador no lado deles). A URL abaixo é a página hospedada pelo MP onde
+        // o cliente entra com os dados do cartão e confirma a assinatura.
+        const checkoutUrl = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${plan.mpPreapprovalPlanId}`;
+        console.log(`[SubscriptionCheckout] Redirecionando para checkout MP do plano ${plan.mpPreapprovalPlanId}`);
+        return { checkoutUrl };
       } else {
         // Fallback: Checkout Pro (pagamento único sem recorrência automática)
         const preferenceBody = {

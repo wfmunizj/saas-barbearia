@@ -13,7 +13,7 @@
 import { Request, Response } from "express";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 
@@ -172,33 +172,53 @@ async function handleSubscriptionEvent(subscriptionId: string) {
   const db = await getDb();
   if (!db) return;
 
+  // Tenta identificar o cliente e o plano via external_reference (formato "clientUserId:X|planId:X")
+  // Fallback: busca por payer_email + preapproval_plan_id (quando cliente assinou sem external_reference)
   const externalRef = mpSub.external_reference ?? "";
-  // external_reference = "clientUserId:{id}|planId:{id}"
   const clientUserIdMatch = externalRef.match(/clientUserId:(\d+)/);
   const planIdMatch = externalRef.match(/planId:(\d+)/);
 
-  if (!clientUserIdMatch || !planIdMatch) {
-    console.warn("[MPWebhook] external_reference inválido:", externalRef);
-    return;
+  let clientUser: any;
+  let plan: any;
+
+  if (clientUserIdMatch && planIdMatch) {
+    // Caminho direto via external_reference
+    const clientUserId = parseInt(clientUserIdMatch[1]);
+    const planId = parseInt(planIdMatch[1]);
+
+    [clientUser] = await db.select().from(clientUsers).where(eq(clientUsers.id, clientUserId)).limit(1);
+    [plan] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+  } else {
+    // Fallback: busca pelo email do pagador + preapproval_plan_id
+    const payerEmail: string = mpSub.payer_email ?? mpSub.payer?.email ?? "";
+    const mpPlanId: string = mpSub.preapproval_plan_id ?? "";
+
+    console.log(`[MPWebhook] external_reference ausente — fallback por email="${payerEmail}" planId="${mpPlanId}"`);
+
+    if (!payerEmail || !mpPlanId) {
+      console.warn("[MPWebhook] Sem dados suficientes para identificar assinatura:", { payerEmail, mpPlanId });
+      return;
+    }
+
+    [plan] = await db.select().from(plans).where(eq(plans.mpPreapprovalPlanId, mpPlanId)).limit(1);
+    if (!plan) {
+      console.warn("[MPWebhook] Plano não encontrado por mpPreapprovalPlanId:", mpPlanId);
+      return;
+    }
+
+    [clientUser] = await db
+      .select()
+      .from(clientUsers)
+      .where(and(eq(clientUsers.email, payerEmail), eq(clientUsers.barbershopId, plan.barbershopId)))
+      .limit(1);
   }
 
-  const clientUserId = parseInt(clientUserIdMatch[1]);
-  const planId = parseInt(planIdMatch[1]);
-
-  const [clientUser] = await db
-    .select()
-    .from(clientUsers)
-    .where(eq(clientUsers.id, clientUserId))
-    .limit(1);
-
-  const [plan] = await db
-    .select()
-    .from(plans)
-    .where(eq(plans.id, planId))
-    .limit(1);
-
   if (!clientUser || !plan) {
-    console.error("[MPWebhook] ClientUser ou Plano não encontrado:", { clientUserId, planId });
+    console.error("[MPWebhook] ClientUser ou Plano não encontrado:", {
+      externalRef,
+      payerEmail: mpSub.payer_email,
+      preapprovalPlanId: mpSub.preapproval_plan_id,
+    });
     return;
   }
 
@@ -218,7 +238,7 @@ async function handleSubscriptionEvent(subscriptionId: string) {
   const [existing] = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.clientUserId, clientUserId))
+    .where(eq(subscriptions.clientUserId, clientUser.id))
     .limit(1);
 
   if (existing) {
@@ -242,10 +262,10 @@ async function handleSubscriptionEvent(subscriptionId: string) {
       })
       .where(eq(subscriptions.id, existing.id));
 
-    console.log(`[MPWebhook] Assinatura atualizada (renewal=${isNewPeriod}) — clientUser:`, clientUserId);
+    console.log(`[MPWebhook] Assinatura atualizada (renewal=${isNewPeriod}) — clientUser:`, clientUser.id);
   } else {
     await db.insert(subscriptions).values({
-      clientUserId,
+      clientUserId: clientUser.id,
       planId: plan.id,
       barbershopId: plan.barbershopId,
       status: mappedStatus,
@@ -256,6 +276,6 @@ async function handleSubscriptionEvent(subscriptionId: string) {
       currentPeriodEnd: periodEnd,
     });
 
-    console.log("[MPWebhook] Assinatura criada — clientUser:", clientUserId);
+    console.log("[MPWebhook] Assinatura criada — clientUser:", clientUser.id);
   }
 }

@@ -16,7 +16,7 @@ import { COOKIE_NAME } from "@shared/const";
 const TRIAL_DAYS = 7;
 export const mpSaasRouter = Router();
 
-import { getMpAccessToken } from "./mpConfig";
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // ─── Helper: autentica owner ──────────────────────────────────────────────────
@@ -183,7 +183,7 @@ mpSaasRouter.post("/checkout", async (req: Request, res: Response) => {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getMpAccessToken(owner.email)}`,
+      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
     },
     body: JSON.stringify(preferenceBody),
   });

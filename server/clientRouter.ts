@@ -16,7 +16,7 @@ import {
 import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 
-import { getMpAccessToken } from "./mpConfig";
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // ─── Helper: autenticar clientUser via cookie ─────────────────────────────────
@@ -412,8 +412,7 @@ export const clientPortalRouter = router({
         const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
 
         // Usa access_token da barbearia se disponível (Marketplace), senão usa token da plataforma
-        // Super admin usa token de teste; demais clientes usam produção
-        const accessToken = barbershop.mpAccessToken ?? getMpAccessToken(clientUser?.email);
+        const accessToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
         const preferenceBody = {
           items: [{
@@ -506,8 +505,7 @@ export const clientPortalRouter = router({
       if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plano não encontrado" });
 
       const origin = (ctx as any).req.headers.origin ?? `http://localhost:3000`;
-      // Super admin usa token de teste; demais clientes usam produção
-      const barbershopToken = barbershop.mpAccessToken ?? getMpAccessToken(clientUser?.email);
+      const barbershopToken = barbershop.mpAccessToken ?? MP_ACCESS_TOKEN;
 
       if (plan.mpPreapprovalPlanId) {
         // Assinatura recorrente: redireciona direto para a página de checkout do plano MP.
@@ -683,7 +681,7 @@ export const clientPortalRouter = router({
 
       // Cancela no MP se tiver ID de assinatura recorrente
       if (sub.mpSubscriptionId) {
-        const accessToken = getMpAccessToken(clientUser?.email);
+        const accessToken = MP_ACCESS_TOKEN;
         await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
           method: "PUT",
           headers: {

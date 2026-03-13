@@ -19,7 +19,7 @@ import {
 } from "../drizzle/schema";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+import { getMpAccessToken } from "./mpConfig";
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // Helper para extrair barbershopId do contexto do usuário autenticado
@@ -1173,7 +1173,8 @@ export const appRouter = router({
 
         // Cria Preapproval Plan no Mercado Pago automaticamente (para assinaturas recorrentes)
         let mpPreapprovalPlanId: string | null = null;
-        if (MP_ACCESS_TOKEN && input.planType !== "single_cut") {
+        const mpToken = getMpAccessToken((ctx.user as any)?.email);
+        if (mpToken && input.planType !== "single_cut") {
           try {
             const mpPlanBody = {
               reason: input.name,
@@ -1190,7 +1191,7 @@ export const appRouter = router({
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+                Authorization: `Bearer ${mpToken}`,
               },
               body: JSON.stringify(mpPlanBody),
             });

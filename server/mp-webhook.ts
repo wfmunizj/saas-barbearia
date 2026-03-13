@@ -15,24 +15,30 @@ import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
 import { and, desc, eq } from "drizzle-orm";
 
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+import { MP_ACCESS_TOKEN_PROD, MP_ACCESS_TOKEN_TEST_VALUE } from "./mpConfig";
+
+// ─── Helper genérico: tenta com token de produção, depois teste ───────────────
+async function mpFetch(url: string): Promise<any | null> {
+  // Tenta com token de produção
+  let res = await fetch(url, { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN_PROD}` } });
+  if (res.ok) return res.json();
+
+  // Fallback: tenta com token de teste (webhook pode vir de pagamentos de teste do super admin)
+  if (MP_ACCESS_TOKEN_TEST_VALUE) {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN_TEST_VALUE}` } });
+    if (res.ok) return res.json();
+  }
+  return null;
+}
 
 // ─── Helper: busca dados de um pagamento no MP ────────────────────────────────
 async function getMpPayment(paymentId: string) {
-  const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
-  });
-  if (!res.ok) return null;
-  return res.json() as Promise<any>;
+  return mpFetch(`https://api.mercadopago.com/v1/payments/${paymentId}`);
 }
 
 // ─── Helper: busca dados de uma assinatura no MP ──────────────────────────────
 async function getMpSubscription(subscriptionId: string) {
-  const res = await fetch(`https://api.mercadopago.com/preapproval/${subscriptionId}`, {
-    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
-  });
-  if (!res.ok) return null;
-  return res.json() as Promise<any>;
+  return mpFetch(`https://api.mercadopago.com/preapproval/${subscriptionId}`);
 }
 
 // ─── Handler principal ────────────────────────────────────────────────────────

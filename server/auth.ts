@@ -117,6 +117,7 @@ export async function registerBarbershop(req: Request, res: Response) {
         loginMethod: "email",
         role: "owner",
         isActive: true,
+        emailVerified: true,
         lastSignedIn: new Date(),
       })
       .returning();
@@ -165,26 +166,15 @@ export async function registerBarbershop(req: Request, res: Response) {
       console.error("[Auth] Falha ao iniciar trial:", err);
     }
 
-    // ─── Enviar email de verificação ───────────────────────────────────────────
-    try {
-      const verifyToken = await createVerificationToken("owner", user.id, email);
-      await sendVerificationEmail(email, ownerName, verifyToken, {
-        barbershopName: barbershopName,
-        userType: "owner",
-      });
-    } catch (err) {
-      console.error("[Auth] Falha ao enviar email de verificação:", err);
-    }
-
     return res.json({
       success: true,
-      requiresVerification: true,
+      requiresVerification: false,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
-        emailVerified: false,
+        emailVerified: true,
       },
       barbershop: {
         id: barbershop.id,

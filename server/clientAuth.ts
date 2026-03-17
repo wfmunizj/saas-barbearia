@@ -139,28 +139,17 @@ clientAuthRouter.post("/:slug/register", async (req: Request, res: Response) => 
       passwordHash,
       phone: phone || null,
       isActive: true,
+      emailVerified: true,
       lastSignedIn: new Date(),
     }).returning();
 
     const sessionToken = await createClientToken(clientUser.id, name);
     setClientCookie(res, sessionToken);
 
-    // Enviar email de verificação
-    try {
-      const verifyToken = await createVerificationToken("client", clientUser.id, email);
-      await sendVerificationEmail(email, name, verifyToken, {
-        barbershopName: barbershop.name,
-        userType: "client",
-        slug: barbershop.slug,
-      });
-    } catch (err) {
-      console.error("[ClientAuth] Falha ao enviar email de verificação:", err);
-    }
-
     return res.json({
       success: true,
-      requiresVerification: true,
-      user: { id: clientUser.id, name: clientUser.name, email: clientUser.email, emailVerified: false },
+      requiresVerification: false,
+      user: { id: clientUser.id, name: clientUser.name, email: clientUser.email, emailVerified: true },
       barbershop: { id: barbershop.id, name: barbershop.name, slug: barbershop.slug },
     });
   } catch (error) {

@@ -81,22 +81,23 @@ export default function ClientAccountPage() {
   const initials = user.name.split(" ").slice(0, 2).map((n: string) => n[0]?.toUpperCase() ?? "").join("");
 
   return (
-    <div className="min-h-screen bg-background" style={{
+    <div className="min-h-screen" style={{
+      backgroundColor: "#FBF8F3",
       "--portal-primary": primaryColor,
       "--portal-secondary": secondaryColor,
     } as React.CSSProperties}>
       {/* Header */}
-      <header className="sticky top-0 z-40 shadow-sm" style={{ backgroundColor: primaryColor }}>
+      <header className="sticky top-0 z-40" style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #E8DFD0" }}>
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}
-              style={{ color: secondaryColor }} className="hover:opacity-80">
+              style={{ color: "#2D2418" }} className="hover:opacity-80">
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="font-bold" style={{ color: secondaryColor }}>Minha Conta</h1>
+            <h1 className="font-bold" style={{ color: "#2D2418" }}>Minha Conta</h1>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}
-            style={{ color: `${secondaryColor}cc` }} className="hover:opacity-80">
+            style={{ color: primaryColor }} className="hover:opacity-80">
             <LogOut className="h-4 w-4 mr-2" />Sair
           </Button>
         </div>

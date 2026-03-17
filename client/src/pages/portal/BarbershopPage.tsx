@@ -21,16 +21,16 @@ export default function BarbershopPublicPage() {
     return (
       <div
         className="min-h-dvh flex items-center justify-center"
-        style={{ backgroundColor: "#0a0a0a" }}
+        style={{ backgroundColor: "#FBF8F3" }}
       >
         <div className="space-y-4 w-full max-w-4xl px-6">
           <div
             className="h-14 rounded-2xl animate-pulse"
-            style={{ background: "rgba(255,255,255,0.06)" }}
+            style={{ background: "#F0EBE3" }}
           />
           <div
             className="h-48 rounded-3xl animate-pulse"
-            style={{ background: "rgba(255,255,255,0.04)" }}
+            style={{ background: "#F0EBE3" }}
           />
         </div>
       </div>
@@ -41,16 +41,16 @@ export default function BarbershopPublicPage() {
     return (
       <div
         className="min-h-dvh flex items-center justify-center"
-        style={{ backgroundColor: "#0a0a0a" }}
+        style={{ backgroundColor: "#FBF8F3" }}
       >
         <div className="text-center space-y-2">
           <h1
-            className="text-2xl font-bold text-white"
-            style={{ fontFamily: "'Bodoni Moda', serif" }}
+            className="text-2xl font-bold"
+            style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
           >
             Barbearia não encontrada
           </h1>
-          <p className="text-white/40 text-sm">Verifique o link e tente novamente.</p>
+          <p className="text-sm" style={{ color: "#8B7355" }}>Verifique o link e tente novamente.</p>
         </div>
       </div>
     );
@@ -59,44 +59,24 @@ export default function BarbershopPublicPage() {
   const primaryColor = barbershop.primaryColor ?? "#C9A84C";
   const secondaryColor = barbershop.secondaryColor ?? "#000000";
 
-  const glassCard = {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
+  const creamCard = {
+    background: "#FFFFFF",
+    border: "1px solid #E8DFD0",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
   } as React.CSSProperties;
 
   return (
     <div
       className="min-h-dvh relative"
-      style={{ backgroundColor: "#0a0a0a", fontFamily: "'Jost', sans-serif" }}
+      style={{ backgroundColor: "#FBF8F3", fontFamily: "'Jost', sans-serif" }}
     >
-      {/* Background glow orbs */}
-      <div
-        className="fixed top-0 left-1/2 -translate-x-1/2 pointer-events-none z-0"
-        style={{
-          width: "800px",
-          height: "600px",
-          background: `radial-gradient(ellipse at 50% 0%, ${primaryColor}20 0%, transparent 65%)`,
-          filter: "blur(40px)",
-        }}
-      />
-      <div
-        className="fixed bottom-0 right-0 pointer-events-none z-0"
-        style={{
-          width: "500px",
-          height: "500px",
-          background: `radial-gradient(ellipse at 100% 100%, ${primaryColor}0d 0%, transparent 65%)`,
-          filter: "blur(60px)",
-        }}
-      />
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-40"
         style={{
-          background: "rgba(10,10,10,0.88)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          background: "#FFFFFF",
+          borderBottom: "1px solid #E8DFD0",
         }}
       >
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -118,8 +98,8 @@ export default function BarbershopPublicPage() {
               </div>
             )}
             <span
-              className="font-bold text-white text-base"
-              style={{ fontFamily: "'Jost', sans-serif" }}
+              className="font-bold text-base"
+              style={{ fontFamily: "'Jost', sans-serif", color: "#2D2418" }}
             >
               {barbershop.name}
             </span>
@@ -128,18 +108,18 @@ export default function BarbershopPublicPage() {
           {/* Auth buttons */}
           {me?.user ? (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-white/40 hidden sm:inline">
+              <span className="text-sm hidden sm:inline" style={{ color: "#8B7355" }}>
                 Olá, {me.user.name?.split(" ")[0]}
               </span>
               <button
                 onClick={() => navigate(`/b/${slug}/minha-conta`)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer"
                 style={{
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "rgba(255,255,255,0.8)",
+                  border: "1px solid #E8DFD0",
+                  color: "#2D2418",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = `${primaryColor}60`)}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#E8DFD0")}
               >
                 <User className="h-4 w-4" />
                 Minha Conta
@@ -149,7 +129,10 @@ export default function BarbershopPublicPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate(`/b/${slug}/login`)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white/50 hover:text-white/80 transition-colors duration-200 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200 cursor-pointer"
+                style={{ color: "#8B7355" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#2D2418")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#8B7355")}
               >
                 <LogIn className="h-4 w-4" />
                 <span className="hidden sm:inline">Entrar</span>
@@ -176,15 +159,15 @@ export default function BarbershopPublicPage() {
         <section className="text-center space-y-6 pt-4 portal-animate-in">
           <div className="space-y-3">
             <h1
-              className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-tight"
-              style={{ fontFamily: "'Bodoni Moda', serif" }}
+              className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-tight"
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
             >
               {barbershop.name}
             </h1>
 
             <div className="flex items-center justify-center gap-4 flex-wrap">
               {barbershop.address && (
-                <span className="flex items-center gap-1.5 text-sm text-white/40">
+                <span className="flex items-center gap-1.5 text-sm" style={{ color: "#8B7355" }}>
                   <MapPin className="h-3.5 w-3.5" />
                   {barbershop.address}
                 </span>
@@ -192,7 +175,8 @@ export default function BarbershopPublicPage() {
               {barbershop.phone && (
                 <a
                   href={`tel:${barbershop.phone.replace(/\D/g, "")}`}
-                  className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors"
+                  className="flex items-center gap-1.5 text-sm transition-colors"
+                  style={{ color: "#8B7355" }}
                 >
                   <Phone className="h-3.5 w-3.5" />
                   {barbershop.phone}
@@ -237,12 +221,12 @@ export default function BarbershopPublicPage() {
           <section className="space-y-6 portal-animate-in-delay">
             <div className="text-center space-y-1">
               <h2
-                className="text-3xl font-bold text-white"
-                style={{ fontFamily: "'Bodoni Moda', serif" }}
+                className="text-3xl font-bold"
+                style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
               >
                 Planos Mensais
               </h2>
-              <p className="text-white/40 text-sm">Assine e economize com agendamentos recorrentes</p>
+              <p className="text-sm" style={{ color: "#8B7355" }}>Assine e economize com agendamentos recorrentes</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -251,7 +235,7 @@ export default function BarbershopPublicPage() {
                     <div
                       key={i}
                       className="h-52 rounded-2xl animate-pulse"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
+                      style={{ background: "#F0EBE3" }}
                     />
                   ))
                 : plans!.map((plan) => {
@@ -264,36 +248,36 @@ export default function BarbershopPublicPage() {
                         style={{
                           background: isHovered
                             ? `${primaryColor}10`
-                            : "rgba(255,255,255,0.04)",
-                          border: `1.5px solid ${isHovered ? primaryColor + "60" : "rgba(255,255,255,0.08)"}`,
-                          boxShadow: isHovered ? `0 0 30px ${primaryColor}14` : "none",
+                            : "#FFFFFF",
+                          border: `1.5px solid ${isHovered ? primaryColor + "60" : "#E8DFD0"}`,
+                          boxShadow: isHovered ? `0 0 30px ${primaryColor}14` : "0 1px 3px rgba(0,0,0,0.04)",
                         }}
                         onMouseEnter={() => setHoveredPlan(plan.id)}
                         onMouseLeave={() => setHoveredPlan(null)}
                       >
                         <div>
                           <h3
-                            className="font-bold text-white text-lg"
-                            style={{ fontFamily: "'Bodoni Moda', serif" }}
+                            className="font-bold text-lg"
+                            style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
                           >
                             {plan.name}
                           </h3>
                           {plan.description && (
-                            <p className="text-white/40 text-sm mt-1">{plan.description}</p>
+                            <p className="text-sm mt-1" style={{ color: "#8B7355" }}>{plan.description}</p>
                           )}
                         </div>
 
                         <div>
                           <span
                             className="text-4xl font-bold"
-                            style={{ color: isHovered ? primaryColor : "white" }}
+                            style={{ color: isHovered ? primaryColor : "#2D2418" }}
                           >
                             R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}
                           </span>
-                          <span className="text-white/35 text-sm ml-1">/mês</span>
+                          <span className="text-sm ml-1" style={{ color: "#B8A88A" }}>/mês</span>
                         </div>
 
-                        <div className="flex items-center gap-2 text-sm text-white/50">
+                        <div className="flex items-center gap-2 text-sm" style={{ color: "#8B7355" }}>
                           {isUnlimited ? (
                             <>
                               <Infinity className="h-4 w-4" style={{ color: primaryColor }} />
@@ -313,8 +297,8 @@ export default function BarbershopPublicPage() {
                         <button
                           className="w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer"
                           style={{
-                            backgroundColor: isHovered ? primaryColor : "rgba(255,255,255,0.08)",
-                            color: isHovered ? secondaryColor : "rgba(255,255,255,0.7)",
+                            backgroundColor: isHovered ? primaryColor : "#F5F0E8",
+                            color: isHovered ? secondaryColor : "#2D2418",
                             boxShadow: isHovered ? `0 4px 20px ${primaryColor}28` : "none",
                           }}
                           onClick={() => {
@@ -338,8 +322,8 @@ export default function BarbershopPublicPage() {
         {(loadingBarbers || (barbers_ && barbers_.length > 0)) && (
           <section className="space-y-6">
             <h2
-              className="text-3xl font-bold text-white text-center"
-              style={{ fontFamily: "'Bodoni Moda', serif" }}
+              className="text-3xl font-bold text-center"
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
             >
               Nossa Equipe
             </h2>
@@ -350,14 +334,14 @@ export default function BarbershopPublicPage() {
                     <div
                       key={i}
                       className="h-32 rounded-2xl animate-pulse"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
+                      style={{ background: "#F0EBE3" }}
                     />
                   ))
                 : barbers_!.map((barber) => (
                     <div
                       key={barber.id}
                       className="rounded-2xl p-5 text-center transition-all duration-300"
-                      style={glassCard}
+                      style={creamCard}
                     >
                       <div
                         className="h-16 w-16 mx-auto mb-3 rounded-full flex items-center justify-center text-lg font-bold"
@@ -369,9 +353,9 @@ export default function BarbershopPublicPage() {
                           .map((n: string) => n[0].toUpperCase())
                           .join("")}
                       </div>
-                      <p className="font-semibold text-white text-sm">{barber.name}</p>
+                      <p className="font-semibold text-sm" style={{ color: "#2D2418" }}>{barber.name}</p>
                       {barber.specialties && (
-                        <p className="text-xs text-white/35 mt-1">{barber.specialties}</p>
+                        <p className="text-xs mt-1" style={{ color: "#B8A88A" }}>{barber.specialties}</p>
                       )}
                     </div>
                   ))}
@@ -383,8 +367,8 @@ export default function BarbershopPublicPage() {
         {(loadingServices || (services_ && services_.length > 0)) && (
           <section className="space-y-6">
             <h2
-              className="text-3xl font-bold text-white text-center"
-              style={{ fontFamily: "'Bodoni Moda', serif" }}
+              className="text-3xl font-bold text-center"
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
             >
               Serviços
             </h2>
@@ -395,7 +379,7 @@ export default function BarbershopPublicPage() {
                     <div
                       key={i}
                       className="h-16 rounded-2xl animate-pulse"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
+                      style={{ background: "#F0EBE3" }}
                     />
                   ))
                 : services_!.map((service) => {
@@ -405,18 +389,18 @@ export default function BarbershopPublicPage() {
                         key={service.id}
                         className="rounded-2xl p-4 flex items-center justify-between transition-all duration-200 cursor-default"
                         style={{
-                          background: isHovered ? `${primaryColor}0d` : "rgba(255,255,255,0.04)",
-                          border: `1.5px solid ${isHovered ? primaryColor + "40" : "rgba(255,255,255,0.07)"}`,
+                          background: isHovered ? `${primaryColor}0d` : "#FFFFFF",
+                          border: `1.5px solid ${isHovered ? primaryColor + "40" : "#E8DFD0"}`,
                         }}
                         onMouseEnter={() => setHoveredService(service.id)}
                         onMouseLeave={() => setHoveredService(null)}
                       >
                         <div>
-                          <p className="font-semibold text-white text-sm">{service.name}</p>
+                          <p className="font-semibold text-sm" style={{ color: "#2D2418" }}>{service.name}</p>
                           {service.description && (
-                            <p className="text-xs text-white/35 mt-0.5">{service.description}</p>
+                            <p className="text-xs mt-0.5" style={{ color: "#B8A88A" }}>{service.description}</p>
                           )}
-                          <div className="flex items-center gap-1 mt-1.5 text-white/35 text-xs">
+                          <div className="flex items-center gap-1 mt-1.5 text-xs" style={{ color: "#B8A88A" }}>
                             <Clock className="h-3 w-3" />
                             <span>{service.durationMinutes} min</span>
                           </div>
@@ -424,8 +408,8 @@ export default function BarbershopPublicPage() {
                         <span
                           className="text-sm font-bold px-3 py-1.5 rounded-full shrink-0 ml-3"
                           style={{
-                            backgroundColor: isHovered ? `${primaryColor}20` : "rgba(255,255,255,0.08)",
-                            color: isHovered ? primaryColor : "rgba(255,255,255,0.65)",
+                            backgroundColor: isHovered ? `${primaryColor}20` : "#F5F0E8",
+                            color: isHovered ? primaryColor : "#8B7355",
                           }}
                         >
                           R$ {(service.priceInCents / 100).toFixed(2).replace(".", ",")}
@@ -440,8 +424,8 @@ export default function BarbershopPublicPage() {
         {/* ── CTA Final ───────────────────────────────────────────────────── */}
         <section className="text-center py-8 space-y-4">
           <p
-            className="text-2xl font-bold text-white/80"
-            style={{ fontFamily: "'Bodoni Moda', serif" }}
+            className="text-2xl font-bold"
+            style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
           >
             Pronto para agendar?
           </p>

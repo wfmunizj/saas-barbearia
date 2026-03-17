@@ -25,35 +25,15 @@ function PortalWrapper({
   return (
     <div
       className="min-h-dvh relative flex overflow-hidden"
-      style={{ backgroundColor: "#0a0a0a", fontFamily: "'Jost', sans-serif" }}
+      style={{ backgroundColor: "#FBF8F3", fontFamily: "'Jost', sans-serif" }}
     >
-      {/* Top glow orb */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none"
-        style={{
-          width: "700px",
-          height: "500px",
-          background: `radial-gradient(ellipse at 50% 0%, ${primaryColor}28 0%, transparent 65%)`,
-          filter: "blur(30px)",
-        }}
-      />
-      {/* Bottom-right glow */}
-      <div
-        className="absolute bottom-0 right-0 pointer-events-none"
-        style={{
-          width: "400px",
-          height: "400px",
-          background: `radial-gradient(ellipse at 100% 100%, ${primaryColor}12 0%, transparent 65%)`,
-          filter: "blur(50px)",
-        }}
-      />
-
       {/* ── Desktop: left branding panel ───────────────────────────────────── */}
-      <div className="hidden lg:flex lg:w-[46%] flex-col justify-between px-16 py-14 relative z-10">
+      <div className="hidden lg:flex lg:w-[46%] flex-col justify-between px-16 py-14 relative z-10" style={{ background: "linear-gradient(160deg, #2D2418, #4A3728)" }}>
         {/* Back button */}
         <button
           onClick={() => navigate(`/b/${slug}`)}
-          className="flex items-center gap-2 text-white/35 hover:text-white/70 transition-colors duration-200 text-sm w-fit cursor-pointer"
+          className="flex items-center gap-2 hover:text-white/70 transition-colors duration-200 text-sm w-fit cursor-pointer"
+          style={{ color: "rgba(255,255,255,0.7)" }}
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar para a barbearia
@@ -79,15 +59,15 @@ function PortalWrapper({
           {/* Name */}
           {barbershop?.name && (
             <h1
-              className="text-5xl xl:text-6xl font-bold text-white leading-tight"
-              style={{ fontFamily: "'Bodoni Moda', serif" }}
+              className="text-5xl xl:text-6xl font-bold leading-tight"
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "white" }}
             >
               {barbershop.name}
             </h1>
           )}
 
           {/* Tagline */}
-          <p className="text-lg text-white/38 leading-relaxed max-w-xs">
+          <p className="text-lg leading-relaxed max-w-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
             Seu estilo, do seu jeito.
             <br />
             Agende online em segundos.
@@ -126,7 +106,8 @@ function PortalWrapper({
         {/* Mobile back button */}
         <button
           onClick={() => navigate(`/b/${slug}`)}
-          className="lg:hidden absolute top-5 left-4 flex items-center gap-1.5 text-white/35 hover:text-white/70 transition-colors duration-200 text-sm cursor-pointer"
+          className="lg:hidden absolute top-5 left-4 flex items-center gap-1.5 hover:text-[#2D2418]/70 transition-colors duration-200 text-sm cursor-pointer"
+          style={{ color: "#2D2418" }}
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
@@ -149,8 +130,8 @@ function PortalWrapper({
             </div>
             {barbershop?.name && (
               <span
-                className="text-lg font-bold text-white text-center"
-                style={{ fontFamily: "'Bodoni Moda', serif" }}
+                className="text-lg font-bold text-center"
+                style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
               >
                 {barbershop.name}
               </span>
@@ -203,10 +184,11 @@ function DarkInput({
         required={required}
         minLength={minLength}
         autoComplete={autoComplete}
-        className="portal-dark-input w-full px-4 py-3.5 rounded-xl text-white text-sm transition-all duration-200"
+        className="portal-input w-full px-4 py-3.5 rounded-xl text-sm transition-all duration-200"
         style={{
-          background: "rgba(255,255,255,0.06)",
-          border: `1.5px solid ${focused ? primaryColor : "rgba(255,255,255,0.1)"}`,
+          background: "#FFFFFF",
+          border: `1.5px solid ${focused ? primaryColor : "#E8DFD0"}`,
+          color: "#2D2418",
           boxShadow: focused ? `0 0 20px ${primaryColor}18` : "none",
           fontFamily: "'Jost', sans-serif",
           paddingRight: suffix ? "48px" : undefined,
@@ -272,25 +254,24 @@ export function ClientLoginPage() {
       <div
         className="rounded-2xl p-7 space-y-6"
         style={{
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          background: "#FFFFFF",
+          border: "1px solid #E8DFD0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}
       >
         <div>
           <h2
-            className="text-2xl font-bold text-white mb-1"
-            style={{ fontFamily: "'Bodoni Moda', serif" }}
+            className="text-2xl font-bold mb-1"
+            style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
           >
             Bem-vindo de volta
           </h2>
-          <p className="text-sm text-white/38">Entre com seus dados para acessar</p>
+          <p className="text-sm" style={{ color: "#8B7355" }}>Entre com seus dados para acessar</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Email
             </label>
             <DarkInput
@@ -306,7 +287,7 @@ export function ClientLoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Senha
             </label>
             <DarkInput
@@ -446,16 +427,15 @@ export function ClientRegisterPage() {
       <div
         className="rounded-2xl p-7 space-y-5"
         style={{
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          background: "#FFFFFF",
+          border: "1px solid #E8DFD0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}
       >
         <div>
           <h2
-            className="text-2xl font-bold text-white mb-1"
-            style={{ fontFamily: "'Bodoni Moda', serif" }}
+            className="text-2xl font-bold mb-1"
+            style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
           >
             Criar Conta
           </h2>
@@ -464,7 +444,7 @@ export function ClientRegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Nome completo *
             </label>
             <DarkInput
@@ -479,7 +459,7 @@ export function ClientRegisterPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Email *
             </label>
             <DarkInput
@@ -495,7 +475,7 @@ export function ClientRegisterPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Telefone / WhatsApp
             </label>
             <DarkInput
@@ -510,7 +490,7 @@ export function ClientRegisterPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Senha *
             </label>
             <DarkInput
@@ -537,7 +517,7 @@ export function ClientRegisterPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] text-white/45 uppercase tracking-widest block">
+            <label className="text-[11px] uppercase tracking-widest block" style={{ color: "#8B7355" }}>
               Confirmar Senha *
             </label>
             <DarkInput

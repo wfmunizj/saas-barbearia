@@ -87,17 +87,18 @@ export default function SubscribePage() {
       ];
 
   return (
-    <div className="min-h-screen bg-background" style={{
+    <div className="min-h-screen" style={{
+      backgroundColor: "#FBF8F3",
       "--portal-primary": primaryColor,
       "--portal-secondary": secondaryColor,
     } as React.CSSProperties}>
-      <header className="sticky top-0 z-40 shadow-sm" style={{ backgroundColor: primaryColor }}>
+      <header className="sticky top-0 z-40" style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #E8DFD0" }}>
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(`/b/${slug}`)}
-            style={{ color: secondaryColor }} className="hover:opacity-80">
+            style={{ color: "#2D2418" }} className="hover:opacity-80">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-bold" style={{ color: secondaryColor }}>Assinar Plano</h1>
+          <h1 className="font-bold" style={{ color: "#2D2418" }}>Assinar Plano</h1>
         </div>
       </header>
 

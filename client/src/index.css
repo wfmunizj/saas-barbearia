@@ -76,6 +76,15 @@
   --sidebar-accent-foreground: oklch(0.141 0.005 285.823);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.623 0.214 259.815);
+
+  /* Portal Creme Theme */
+  --portal-bg: #FBF8F3;
+  --portal-card: #FFFFFF;
+  --portal-card-hover: #F5F0E8;
+  --portal-border: #E8DFD0;
+  --portal-text: #2D2418;
+  --portal-text-secondary: #8B7355;
+  --portal-text-muted: #B8A88A;
 }
 
 .dark {
@@ -176,7 +185,7 @@
   }
 }
 
-/* ─── Portal Dark Theme ───────────────────────────────────────────────────────── */
+/* ─── Portal Creme Theme ──────────────────────────────────────────────────────── */
 @keyframes portal-slide-up {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -200,20 +209,20 @@
   animation: portal-step-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.portal-dark-input::placeholder {
-  color: rgba(255, 255, 255, 0.22);
+.portal-input::placeholder {
+  color: #8B7355;
 }
-.portal-dark-input {
+.portal-input {
   outline: none;
-  caret-color: white;
+  caret-color: #2D2418;
 }
-.portal-dark-input:-webkit-autofill,
-.portal-dark-input:-webkit-autofill:hover,
-.portal-dark-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: white;
-  -webkit-box-shadow: 0 0 0px 1000px rgba(255,255,255,0.06) inset;
+.portal-input:-webkit-autofill,
+.portal-input:-webkit-autofill:hover,
+.portal-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #2D2418;
+  -webkit-box-shadow: 0 0 0px 1000px #FFFFFF inset;
   transition: background-color 5000s ease-in-out 0s;
 }
-.portal-dark-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.22);
+.portal-textarea::placeholder {
+  color: #8B7355;
 }

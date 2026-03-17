@@ -47,24 +47,25 @@ export default function VerifyEmailPage() {
 
   if (emailVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#0a0a0a" }}>
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#FBF8F3" }}>
         <div className="max-w-md w-full text-center rounded-2xl p-8" style={{
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "#FFFFFF",
+          border: "1px solid #E8DFD0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}>
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: `${primaryColor}22` }}>
             <CheckCircle2 className="h-8 w-8" style={{ color: primaryColor }} />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: "'Bodoni Moda', serif" }}>
+          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}>
             Email Verificado!
           </h2>
-          <p className="text-white/50 mb-6">
+          <p className="mb-6" style={{ color: "#8B7355" }}>
             Seu email foi confirmado. Agora você pode agendar e usar todos os recursos.
           </p>
           <Button
             onClick={() => window.location.href = `/b/${slug}`}
             className="w-full"
-            style={{ background: primaryColor }}
+            style={{ background: primaryColor, color: "#FFF" }}
           >
             Continuar
           </Button>
@@ -74,30 +75,31 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#0a0a0a" }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#FBF8F3" }}>
       <div className="max-w-md w-full text-center rounded-2xl p-8" style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: "#FFFFFF",
+        border: "1px solid #E8DFD0",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: `${primaryColor}22` }}>
           <Mail className="h-8 w-8" style={{ color: primaryColor }} />
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: "'Bodoni Moda', serif" }}>
+        <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}>
           {error ? "Erro na Verificação" : "Verifique seu Email"}
         </h2>
-        <p className="text-white/50 mb-6">
+        <p className="mb-6" style={{ color: "#8B7355" }}>
           {error
             ? decodeURIComponent(error)
             : "Enviamos um link de confirmação para o seu email. Clique no link para ativar sua conta."}
         </p>
-        <p className="text-sm text-white/30 mb-6">
+        <p className="text-sm mb-6" style={{ color: "#B8A88A" }}>
           Não recebeu? Verifique a pasta de spam ou clique abaixo.
         </p>
         <Button
           onClick={handleResend}
           disabled={isResending || cooldown > 0}
           variant="outline"
-          className="w-full border-white/10 text-white hover:bg-white/5"
+          className="w-full border-[#E8DFD0] text-[#2D2418] hover:bg-[#F5F0E8]"
         >
           {isResending ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</>

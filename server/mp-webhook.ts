@@ -319,7 +319,22 @@ async function handleSubscriptionEvent(subscriptionId: string) {
   let clientUser: any;
   let plan: any;
 
-  if (clientUserIdMatch && planIdMatch) {
+  // Fallback 0: busca pelo mpSubscriptionId já gravado no nosso banco.
+  // Cobre eventos subsequentes (cancelled, authorized) após o primeiro evento (pending)
+  // ter gravado o mpSubscriptionId na assinatura.
+  const [existingByMpId] = await db
+    .select({ clientUserId: subscriptions.clientUserId, planId: subscriptions.planId })
+    .from(subscriptions)
+    .where(eq(subscriptions.mpSubscriptionId, subscriptionId))
+    .limit(1);
+
+  if (existingByMpId) {
+    [clientUser] = await db.select().from(clientUsers)
+      .where(eq(clientUsers.id, existingByMpId.clientUserId!)).limit(1);
+    [plan] = await db.select().from(plans)
+      .where(eq(plans.id, existingByMpId.planId!)).limit(1);
+    console.log(`[MPWebhook] Cliente identificado via mpSubscriptionId no banco — clientUser:${clientUser?.id}`);
+  } else if (clientUserIdMatch && planIdMatch) {
     // Caminho direto via external_reference
     const clientUserId = parseInt(clientUserIdMatch[1]);
     const planId = parseInt(planIdMatch[1]);

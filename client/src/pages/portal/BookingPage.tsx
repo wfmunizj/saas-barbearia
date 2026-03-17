@@ -218,20 +218,20 @@ export default function BookingPage() {
           <button
             onClick={() => navigate(`/b/${slug}`)}
             className="h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer"
-            style={{ color: "#8B7355" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#2D2418"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#8B7355"}
+            style={{ color: "#6B5544" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#1A120A"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#6B5544"}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <span
             className="font-bold"
-            style={{ fontFamily: "'Jost', sans-serif", color: "#2D2418" }}
+            style={{ fontFamily: "'Jost', sans-serif", color: "#1A120A" }}
           >
             Agendar
           </span>
           {barbershop?.name && (
-            <span className="text-sm hidden sm:inline" style={{ color: "#8B7355" }}>· {barbershop.name}</span>
+            <span className="text-sm hidden sm:inline" style={{ color: "#6B5544" }}>· {barbershop.name}</span>
           )}
         </div>
       </header>
@@ -274,7 +274,7 @@ export default function BookingPage() {
                   </div>
                   <span
                     className="text-[10px] hidden sm:block transition-colors duration-200"
-                    style={{ color: i <= currentStepIndex ? "#2D2418" : "#B8A88A" }}
+                    style={{ color: i <= currentStepIndex ? "#1A120A" : "#9D8B7D" }}
                   >
                     {s.label}
                   </span>
@@ -284,7 +284,7 @@ export default function BookingPage() {
                     className="flex-1 h-px mx-2 mb-3 sm:mb-0 transition-all duration-500"
                     style={{
                       backgroundColor:
-                        i < currentStepIndex ? primaryColor : "#E8DFD0",
+                        i < currentStepIndex ? primaryColor : "#D8CCC0",
                     }}
                   />
                 )}
@@ -307,7 +307,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Escolha o barbeiro
             </h2>
@@ -319,9 +319,9 @@ export default function BookingPage() {
                   onClick={() => setSelectedBarber(barber)}
                   className="w-full text-left p-4 rounded-2xl transition-all duration-200 flex items-center gap-4 cursor-pointer"
                   style={{
-                    background: isSelected ? `${primaryColor}15` : "#FFFFFF",
-                    border: `1.5px solid ${isSelected ? primaryColor : "#E8DFD0"}`,
-                    boxShadow: isSelected ? `0 0 28px ${primaryColor}18` : "none",
+                    background: isSelected ? `${primaryColor}12` : "#FFFFFF",
+                    border: `${isSelected ? "2px solid" : "1px solid"} ${isSelected ? primaryColor : "#D8CCC0"}`,
+                    boxShadow: isSelected ? `0 0 20px ${primaryColor}20, 0 2px 8px rgba(0,0,0,0.08)` : "0 2px 4px rgba(0,0,0,0.05)",
                   }}
                 >
                   <div
@@ -334,9 +334,9 @@ export default function BookingPage() {
                     {barber.name.split(" ").slice(0, 2).map((n: string) => n[0].toUpperCase()).join("")}
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold" style={{ color: "#2D2418" }}>{barber.name}</p>
+                    <p className="font-semibold" style={{ color: "#1A120A" }}>{barber.name}</p>
                     {barber.specialties && (
-                      <p className="text-sm mt-0.5" style={{ color: "#8B7355" }}>{barber.specialties}</p>
+                      <p className="text-sm mt-0.5" style={{ color: "#6B5544" }}>{barber.specialties}</p>
                     )}
                   </div>
                   {isSelected && (
@@ -366,7 +366,7 @@ export default function BookingPage() {
                       color: secondaryColor,
                       boxShadow: `0 4px 25px ${primaryColor}28`,
                     }
-                  : { background: "#E8DFD0", color: "#B8A88A" }
+                  : { background: "#D8CCC0", color: "#9D8B7D" }
               }
             >
               Continuar
@@ -379,7 +379,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Plano de assinatura
             </h2>
@@ -446,7 +446,7 @@ export default function BookingPage() {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setStep("barber")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
                 Voltar
@@ -471,7 +471,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Escolha o(s) serviço(s)
             </h2>
@@ -540,7 +540,7 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => { setSelectedServices([]); setStep("plan"); }}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
                 Voltar
@@ -570,7 +570,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Escolha a data
             </h2>
@@ -625,15 +625,15 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("service")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-black/80 hover:text-white"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
-                Voltar
+                Voltaasdr
               </button>
               <button
                 disabled={!selectedDate}
                 onClick={() => setStep("time")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer disabled:opacity-40"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer  text-black/80 hover:text-white"
                 style={
                   selectedDate
                     ? {
@@ -655,7 +655,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Escolha o horário
             </h2>
@@ -721,7 +721,7 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("date")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
                 Voltar
@@ -751,7 +751,7 @@ export default function BookingPage() {
           <div className="space-y-4 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
             >
               Confirmar Agendamento
             </h2>
@@ -937,7 +937,7 @@ export default function BookingPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep("time")}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
                   style={{ border: "1px solid rgba(255,255,255,0.1)" }}
                 >
                   Voltar

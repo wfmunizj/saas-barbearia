@@ -437,14 +437,14 @@ export default function BookingPage() {
                     </div>
                   </div>
                 ))}
-                <p className="text-xs text-white/30 text-center pt-1">
+                <p className="text-xs text-black/30 text-center pt-1">
                   Para assinar um plano, acesse <span style={{ color: primaryColor }}>Minha Conta</span>
                 </p>
               </div>
             )}
 
             {!me?.subscription && (!plans_ || plans_.length === 0) && (
-              <p className="text-sm text-white/30 text-center py-4">Nenhum plano disponível — agendamento avulso</p>
+              <p className="text-sm text-black text-center py-4">Nenhum plano disponível — agendamento avulso</p>
             )}
 
             <div className="flex gap-3 pt-1">
@@ -916,7 +916,7 @@ export default function BookingPage() {
                       Pagar via Mercado Pago
                     </button>
                   </div>
-                  <p className="text-xs text-white/30 text-center">
+                  <p className="text-xs text-black text-center">
                     Valor: R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}
                   </p>
                 </div>
@@ -928,7 +928,7 @@ export default function BookingPage() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="portal-dark-textarea w-full rounded-xl p-3.5 text-sm resize-none text-white transition-all duration-200"
+                className="portal-dark-textarea w-full rounded-xl p-3.5 text-sm resize-none text-black transition-all duration-200"
                 style={{
                   background: "rgba(255,255,255,0.05)",
                   border: "1px solid rgba(255,255,255,0.09)",
@@ -942,7 +942,7 @@ export default function BookingPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep("time")}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-black hover:text-white"
                   style={{ border: "1px solid rgba(255,255,255,0.1)" }}
                 >
                   Voltar
@@ -974,7 +974,7 @@ export default function BookingPage() {
             {!me?.subscription && !isGuestBooking && (
               <button
                 onClick={() => setStep("time")}
-                className="w-full py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/60 hover:text-white/90"
+                className="w-full py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-black/60 hover:text-black/90"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
                 Voltar

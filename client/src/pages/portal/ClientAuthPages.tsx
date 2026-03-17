@@ -81,15 +81,15 @@ function PortalWrapper({
           </div>
 
           {/* Feature pills */}
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-3 flex-wrap ">
             {["Online 24h", "Sem filas", "Rápido e fácil"].map((f) => (
               <span
                 key={f}
-                className="px-3 py-1.5 rounded-full text-xs font-medium"
+                className="px-3 py-1.5 rounded-full text-xs font-medium text-white/80"
                 style={{
                   background: `${primaryColor}14`,
                   border: `1px solid ${primaryColor}25`,
-                  color: `${primaryColor}cc`,
+                  // color: `${primaryColor}cc`,
                 }}
               >
                 {f}
@@ -335,7 +335,7 @@ export function ClientLoginPage() {
         </form>
       </div>
 
-      <p className="text-center text-sm text-white/35 mt-5">
+      <p className="text-center text-sm text-black mt-5">
         Não tem conta?{" "}
         <button
           onClick={() => navigate(`/b/${slug}/cadastro`)}

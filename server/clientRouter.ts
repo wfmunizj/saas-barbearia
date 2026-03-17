@@ -134,15 +134,28 @@ export const clientPortalRouter = router({
         );
 
       const bookedTimes = new Set(
-        existing.map(a => new Date(a.appointmentDate).toTimeString().slice(0, 5))
+        existing.map(a => {
+          const d = new Date(a.appointmentDate);
+          // Converte para horário de Brasília antes de extrair HH:MM
+          const brTime = new Date(d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+          return `${String(brTime.getHours()).padStart(2, "0")}:${String(brTime.getMinutes()).padStart(2, "0")}`;
+        })
       );
+
+      // Verifica se a data solicitada é hoje (no fuso de Brasília -03:00)
+      const nowBR = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const todayStr = `${nowBR.getFullYear()}-${String(nowBR.getMonth() + 1).padStart(2, "0")}-${String(nowBR.getDate()).padStart(2, "0")}`;
+      const isToday = input.date === todayStr;
+      const nowMinutes = isToday ? nowBR.getHours() * 60 + nowBR.getMinutes() : -1;
 
       // Gera slots de 30 em 30 minutos das 08:00 às 18:00
       const slots: { time: string; available: boolean }[] = [];
       for (let hour = 8; hour < 18; hour++) {
         for (const min of [0, 30]) {
           const time = `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-          slots.push({ time, available: !bookedTimes.has(time) });
+          const slotMinutes = hour * 60 + min;
+          const isPast = isToday && slotMinutes <= nowMinutes;
+          slots.push({ time, available: !bookedTimes.has(time) && !isPast });
         }
       }
 

@@ -96,11 +96,15 @@ export default function BookingPage() {
 
   const availableDates = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() + i + 1);
+    d.setDate(d.getDate() + i); // começa hoje (i=0)
     const dow = d.getDay();
     if (dow === 0) return null;
     if (allowedDaysOfWeek && !allowedDaysOfWeek.includes(dow)) return null;
-    return d.toISOString().split("T")[0];
+    // Usar data local (Brasil) em vez de UTC para evitar adiantar 1 dia
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }).filter(Boolean) as string[];
 
   const handleConfirmClick = (method?: "in_person" | "mp") => {
@@ -188,7 +192,7 @@ export default function BookingPage() {
               Entrar
             </button>
             <button
-              className="w-full py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/70 hover:text-white"
+              className="w-full py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-neutral hover:text-neutral"
               style={{ border: "1px solid rgba(255,255,255,0.12)" }}
               onClick={() => navigate(`/b/${slug}/cadastro?redirect=agendar`)}
             >
@@ -530,8 +534,8 @@ export default function BookingPage() {
                 <span className="font-semibold" style={{ color: primaryColor }}>
                   {selectedServices.length} serviço(s)
                 </span>
-                <span className="text-white/50"> · {totalDuration} min · </span>
-                <span className="font-semibold text-white">
+                <span className="text-neutral/50"> · {totalDuration} min · </span>
+                <span className="font-semibold text-neutral">
                   R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}
                 </span>
               </div>
@@ -575,12 +579,12 @@ export default function BookingPage() {
               Escolha a data
             </h2>
             {availableDates.length === 0 && (
-              <div className="text-center py-10 text-white/30">
+              <div className="text-center py-10 text-black">
                 <CalendarIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
                 <p className="text-sm">Nenhuma data disponível para seu plano nos próximos 30 dias.</p>
               </div>
             )}
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 text-black">
               {availableDates.map((date) => {
                 const d = new Date(date + "T12:00:00");
                 const dayName = d.toLocaleDateString("pt-BR", { weekday: "short" });
@@ -591,7 +595,7 @@ export default function BookingPage() {
                   <button
                     key={date}
                     onClick={() => setSelectedDate(date)}
-                    className="p-2.5 rounded-xl text-center transition-all duration-200 cursor-pointer"
+                    className="p-2.5 rounded-xl text-center transition-all duration-200 cursor-pointer text-black"
                     style={
                       isSelected
                         ? {
@@ -601,18 +605,18 @@ export default function BookingPage() {
                             border: `1.5px solid ${primaryColor}`,
                           }
                         : {
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1.5px solid rgba(255,255,255,0.08)",
-                            color: "rgba(255,255,255,0.75)",
+                            background: "#FFFBF7",
+                            border: "1px solid #C9B8A6",
+                            color: "#0D0803",
                           }
                     }
                     onMouseEnter={(e) => {
                       if (!isSelected)
-                        e.currentTarget.style.borderColor = `${primaryColor}60`;
+                        e.currentTarget.style.borderColor = `${primaryColor}80`;
                     }}
                     onMouseLeave={(e) => {
                       if (!isSelected)
-                        e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                        e.currentTarget.style.borderColor = "#C9B8A6";
                     }}
                   >
                     <p className="text-[10px] capitalize opacity-70">{dayName}</p>
@@ -625,15 +629,15 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("service")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-black/80 hover:text-white"
-                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-neutral hover:text-neutral"
+                style={{ border: "1px solid #C9B8A6" }}
               >
-                Voltaasdr
+                Voltar
               </button>
               <button
                 disabled={!selectedDate}
                 onClick={() => setStep("time")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer  text-black/80 hover:text-white"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer"
                 style={
                   selectedDate
                     ? {
@@ -665,7 +669,7 @@ export default function BookingPage() {
                   <div
                     key={i}
                     className="h-12 rounded-xl animate-pulse"
-                    style={{ background: "rgba(255,255,255,0.07)" }}
+                    style={{ background: "#E8E0D4" }}
                   />
                 ))}
               </div>
@@ -682,9 +686,9 @@ export default function BookingPage() {
                       style={
                         !slot.available
                           ? {
-                              background: "rgba(255,255,255,0.03)",
-                              border: "1.5px solid rgba(255,255,255,0.05)",
-                              color: "rgba(255,255,255,0.15)",
+                              background: "#EDE8E2",
+                              border: "1px solid #D9CCC0",
+                              color: "#B8A88A",
                               cursor: "not-allowed",
                               textDecoration: "line-through",
                             }
@@ -697,19 +701,19 @@ export default function BookingPage() {
                               cursor: "pointer",
                             }
                           : {
-                              background: "rgba(255,255,255,0.05)",
-                              border: "1.5px solid rgba(255,255,255,0.09)",
-                              color: "rgba(255,255,255,0.75)",
+                              background: "#FFFBF7",
+                              border: "1px solid #C9B8A6",
+                              color: "#0D0803",
                               cursor: "pointer",
                             }
                       }
                       onMouseEnter={(e) => {
                         if (slot.available && !isSelected)
-                          e.currentTarget.style.borderColor = `${primaryColor}60`;
+                          e.currentTarget.style.borderColor = `${primaryColor}80`;
                       }}
                       onMouseLeave={(e) => {
                         if (slot.available && !isSelected)
-                          e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
+                          e.currentTarget.style.borderColor = "#C9B8A6";
                       }}
                     >
                       {slot.time}
@@ -760,8 +764,9 @@ export default function BookingPage() {
             <div
               className="rounded-2xl p-5 space-y-4"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "#FFFBF7",
+                border: "1px solid #C9B8A6",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
               }}
             >
               {/* Barbeiro */}
@@ -773,12 +778,12 @@ export default function BookingPage() {
                   <User className="h-4 w-4" style={{ color: primaryColor }} />
                 </div>
                 <div>
-                  <p className="text-[11px] text-white/35 uppercase tracking-wider">Barbeiro</p>
-                  <p className="font-semibold text-white text-sm">{selectedBarber?.name}</p>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#5C4A38" }}>Barbeiro</p>
+                  <p className="font-semibold text-neutral text-sm">{selectedBarber?.name}</p>
                 </div>
               </div>
 
-              <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+              <div className="h-px" style={{ background: "#D9CCC0" }} />
 
               {/* Serviços */}
               <div className="flex items-start gap-3">
@@ -814,7 +819,7 @@ export default function BookingPage() {
                 </div>
               </div>
 
-              <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+              <div className="h-px" style={{ background: "#D9CCC0" }} />
 
               {/* Data/hora */}
               <div className="flex items-center gap-3">
@@ -825,8 +830,8 @@ export default function BookingPage() {
                   <CalendarIcon className="h-4 w-4" style={{ color: primaryColor }} />
                 </div>
                 <div>
-                  <p className="text-[11px] text-white/35 uppercase tracking-wider">Data e Horário</p>
-                  <p className="font-semibold text-white text-sm">
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#5C4A38" }}>Data e Horário</p>
+                  <p className="font-semibold text-neutral text-sm">
                     {new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", {
                       weekday: "long",
                       day: "numeric",
@@ -877,8 +882,8 @@ export default function BookingPage() {
               {/* Payment options — sem assinatura */}
               {!me?.subscription && !isGuestBooking && (
                 <div className="space-y-3">
-                  <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
-                  <p className="text-sm font-semibold text-white/70">Como você vai pagar?</p>
+                  <div className="h-px" style={{ background: "#D9CCC0" }} />
+                  <p className="text-sm font-semibold" style={{ color: "#5C4A38" }}>Como você vai pagar?</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => handleConfirmClick("in_person")}

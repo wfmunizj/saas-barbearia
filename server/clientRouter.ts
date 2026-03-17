@@ -539,7 +539,7 @@ export const clientPortalRouter = router({
           if (existingSub) {
             await db
               .update(subscriptions)
-              .set({ planId: plan.id, barbershopId: plan.barbershopId, status: "trialing", updatedAt: new Date() })
+              .set({ planId: plan.id, barbershopId: plan.barbershopId, status: "trialing", mpSubscriptionId: null, updatedAt: new Date() })
               .where(eq(subscriptions.id, existingSub.id));
           } else {
             await db.insert(subscriptions).values({

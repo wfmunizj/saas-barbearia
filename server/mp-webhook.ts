@@ -333,12 +333,15 @@ async function handleSubscriptionEvent(subscriptionId: string) {
 
     console.log(`[MPWebhook] external_reference ausente — fallback por email="${payerEmail}" planId="${mpPlanId}"`);
 
-    if (!payerEmail || !mpPlanId) {
+    // Retorna só se não houver NENHUM dado para identificar (nem email nem planId)
+    if (!payerEmail && !mpPlanId) {
       console.warn("[MPWebhook] Sem dados suficientes para identificar assinatura:", { payerEmail, mpPlanId });
       return;
     }
 
-    [plan] = await db.select().from(plans).where(eq(plans.mpPreapprovalPlanId, mpPlanId)).limit(1);
+    if (mpPlanId) {
+      [plan] = await db.select().from(plans).where(eq(plans.mpPreapprovalPlanId, mpPlanId)).limit(1);
+    }
     if (!plan) {
       console.warn("[MPWebhook] Plano não encontrado por mpPreapprovalPlanId:", mpPlanId);
       return;

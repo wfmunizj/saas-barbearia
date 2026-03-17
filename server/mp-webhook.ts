@@ -249,24 +249,14 @@ async function handlePaymentEvent(paymentId: string) {
       return;
     }
 
-    // Verifica idempotência
-    const [existing] = await db
-      .select({ id: payments.id })
-      .from(payments)
-      .where(eq(payments.mpPaymentId, String(paymentId)))
-      .limit(1);
-
-    if (existing) {
-      console.log("[MPWebhook] Pagamento já registrado:", paymentId);
-      return;
-    }
-
     // Detecta método de pagamento
     const pmMethod = payment.payment_type_id === "bank_transfer" ? "pix"
       : payment.payment_type_id === "ticket" ? "boleto"
       : "card";
 
-    await db.insert(payments).values({
+    // INSERT idempotente — ON CONFLICT DO NOTHING evita duplicatas mesmo em race conditions
+    // (o unique constraint em mp_payment_id garante que apenas 1 row seja inserida)
+    const inserted = await db.insert(payments).values({
       appointmentId,
       clientId,
       barbershopId,
@@ -275,7 +265,12 @@ async function handlePaymentEvent(paymentId: string) {
       paymentMethod: pmMethod,
       mpPaymentId: String(paymentId),
       mpPreferenceId: payment.preference_id ?? null,
-    });
+    }).onConflictDoNothing().returning({ id: payments.id });
+
+    if (!inserted.length) {
+      console.log("[MPWebhook] Pagamento já registrado (idempotência):", paymentId);
+      return;
+    }
 
     console.log("[MPWebhook] Pagamento avulso registrado — cliente:", clientId);
 

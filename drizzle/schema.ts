@@ -214,7 +214,7 @@ export const payments = pgTable("payments", {
   amountInCents: integer("amount_in_cents").notNull(),
   status: paymentStatusEnum("status").default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }),
-  mpPaymentId: varchar("mp_payment_id", { length: 255 }),
+  mpPaymentId: varchar("mp_payment_id", { length: 255 }).unique(),
   mpPreferenceId: varchar("mp_preference_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -231,7 +231,7 @@ export function ClientLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
 
-  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
   const primaryColor = barbershop?.primaryColor ?? "#C9A84C";
   const secondaryColor = barbershop?.secondaryColor ?? "#000000";
 
@@ -385,7 +385,7 @@ export function ClientRegisterPage() {
     confirmPassword: "",
   });
 
-  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
   const primaryColor = barbershop?.primaryColor ?? "#C9A84C";
   const secondaryColor = barbershop?.secondaryColor ?? "#000000";
 

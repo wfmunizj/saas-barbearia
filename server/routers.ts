@@ -1335,7 +1335,7 @@ export const appRouter = router({
   }),
 
   // ─── Portal do Cliente (público) ─────────────────────────────────────────────
-  client: clientPortalRouter,
+  clientPortal: clientPortalRouter,
 });
 
 export type AppRouter = typeof appRouter;

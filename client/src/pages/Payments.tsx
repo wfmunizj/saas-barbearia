@@ -169,9 +169,9 @@ export default function Payments() {
                           {new Date(payment.createdAt).toLocaleString('pt-BR')}
                           {payment.paymentMethod && ` • ${payment.paymentMethod}`}
                         </p>
-                        {payment.stripePaymentIntentId && (
+                        {"mpPaymentId" in payment && payment.mpPaymentId && (
                           <p className="text-xs text-muted-foreground mt-1">
-                            ID: {payment.stripePaymentIntentId}
+                            ID: {payment.mpPaymentId}
                           </p>
                         )}
                       </div>

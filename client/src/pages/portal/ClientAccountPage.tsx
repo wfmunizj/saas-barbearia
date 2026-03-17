@@ -17,8 +17,8 @@ export default function ClientAccountPage() {
   const [, navigate] = useLocation();
 
   const queryClient = useQueryClient();
-  const { data: me, isLoading } = trpc.client.me.useQuery({ slug });
-  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const { data: me, isLoading } = trpc.clientPortal.me.useQuery({ slug });
+  const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
 
   const primaryColor = barbershop?.primaryColor ?? "#000000";
   const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
@@ -32,7 +32,7 @@ export default function ClientAccountPage() {
   // Cancelamento de assinatura
   const [showCancelSubDialog, setShowCancelSubDialog] = useState(false);
 
-  const cancelAppointmentMutation = trpc.client.cancelAppointment.useMutation({
+  const cancelAppointmentMutation = trpc.clientPortal.cancelAppointment.useMutation({
     onSuccess: (data) => {
       toast.success(data.creditsRefunded
         ? "Agendamento cancelado. Seu crédito foi devolvido!"
@@ -45,7 +45,7 @@ export default function ClientAccountPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  const cancelSubscriptionMutation = trpc.client.cancelSubscription.useMutation({
+  const cancelSubscriptionMutation = trpc.clientPortal.cancelSubscription.useMutation({
     onSuccess: () => {
       toast.success("Assinatura cancelada.");
       queryClient.invalidateQueries({ queryKey: [['client', 'me']] });

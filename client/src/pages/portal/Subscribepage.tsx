@@ -11,16 +11,16 @@ export default function SubscribePage() {
   const [, navigate] = useLocation();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
-  const { data: me } = trpc.client.me.useQuery({ slug });
-  const { data: plans, isLoading } = trpc.client.getPlans.useQuery({ slug });
-  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
+  const { data: me } = trpc.clientPortal.me.useQuery({ slug });
+  const { data: plans, isLoading } = trpc.clientPortal.getPlans.useQuery({ slug });
+  const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
 
   const primaryColor = barbershop?.primaryColor ?? "#000000";
   const secondaryColor = barbershop?.secondaryColor ?? "#FFFFFF";
 
   const plan = plans?.find(p => p.id === parseInt(planId));
 
-  const checkoutMutation = trpc.client.createSubscriptionCheckout.useMutation({
+  const checkoutMutation = trpc.clientPortal.createSubscriptionCheckout.useMutation({
     onSuccess: (data) => {
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;

@@ -29,6 +29,7 @@ export default function Reports() {
   // Serviços mais solicitados
   const serviceStats = appointments?.reduce((acc, appointment) => {
     const serviceId = appointment.serviceId;
+    if (serviceId == null) return acc;
     if (!acc[serviceId]) {
       acc[serviceId] = 0;
     }

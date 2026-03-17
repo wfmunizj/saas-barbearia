@@ -457,8 +457,8 @@ export async function getPayments(
         amountInCents: payments.amountInCents,
         status: payments.status,
         paymentMethod: payments.paymentMethod,
-        stripePaymentIntentId: payments.stripePaymentIntentId,
-        stripeSessionId: payments.stripeSessionId,
+        mpPaymentId: payments.mpPaymentId,
+        mpPreferenceId: payments.mpPreferenceId,
         createdAt: payments.createdAt,
         updatedAt: payments.updatedAt,
       })
@@ -486,13 +486,13 @@ export async function createPayment(data: InsertPayment) {
   return result[0];
 }
 
-export async function updatePaymentByStripeSession(stripeSessionId: string, data: Partial<InsertPayment>) {
+export async function updatePaymentByMpPreference(mpPreferenceId: string, data: Partial<InsertPayment>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db
     .update(payments)
     .set({ ...data, updatedAt: new Date() })
-    .where(eq(payments.stripeSessionId, stripeSessionId))
+    .where(eq(payments.mpPreferenceId, mpPreferenceId))
     .returning();
   return result[0];
 }

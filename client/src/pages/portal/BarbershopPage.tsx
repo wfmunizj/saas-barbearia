@@ -9,11 +9,11 @@ export default function BarbershopPublicPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
 
-  const { data: barbershop, isLoading: loadingShop } = trpc.client.getBarbershop.useQuery({ slug });
-  const { data: plans, isLoading: loadingPlans } = trpc.client.getPlans.useQuery({ slug });
-  const { data: barbers_, isLoading: loadingBarbers } = trpc.client.getBarbers.useQuery({ slug });
-  const { data: services_, isLoading: loadingServices } = trpc.client.getServices.useQuery({ slug });
-  const { data: me } = trpc.client.me.useQuery({ slug });
+  const { data: barbershop, isLoading: loadingShop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
+  const { data: plans, isLoading: loadingPlans } = trpc.clientPortal.getPlans.useQuery({ slug });
+  const { data: barbers_, isLoading: loadingBarbers } = trpc.clientPortal.getBarbers.useQuery({ slug });
+  const { data: services_, isLoading: loadingServices } = trpc.clientPortal.getServices.useQuery({ slug });
+  const { data: me } = trpc.clientPortal.me.useQuery({ slug });
   const [hoveredPlan, setHoveredPlan] = useState<number | null>(null);
   const [hoveredService, setHoveredService] = useState<number | null>(null);
 

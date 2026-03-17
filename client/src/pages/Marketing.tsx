@@ -34,10 +34,7 @@ export default function Marketing() {
   const [campaignFormData, setCampaignFormData] = useState({
     name: "",
     description: "",
-    type: "promotional" as "promotional" | "reactivation" | "referral",
-    discountPercentage: "",
-    startDate: "",
-    endDate: "",
+    type: "discount" as "discount" | "reactivation" | "referral" | "custom",
   });
 
   const [messageFormData, setMessageFormData] = useState({
@@ -48,7 +45,7 @@ export default function Marketing() {
   const { data: whatsappMessages } = trpc.whatsapp.list.useQuery();
   const { data: messageTemplates } = trpc.messageTemplates.list.useQuery();
   const { data: inactiveClients } = trpc.clients.getInactive.useQuery(
-    { days: parseInt(inactiveDays) },
+    { daysSinceLastVisit: parseInt(inactiveDays) },
     { enabled: !!inactiveDays }
   );
 
@@ -79,10 +76,7 @@ export default function Marketing() {
     setCampaignFormData({
       name: "",
       description: "",
-      type: "promotional",
-      discountPercentage: "",
-      startDate: "",
-      endDate: "",
+      type: "discount",
     });
   };
 
@@ -96,11 +90,6 @@ export default function Marketing() {
       name: campaignFormData.name,
       description: campaignFormData.description || undefined,
       type: campaignFormData.type,
-      discountPercentage: campaignFormData.discountPercentage 
-        ? parseInt(campaignFormData.discountPercentage) 
-        : undefined,
-      startDate: new Date(campaignFormData.startDate),
-      endDate: campaignFormData.endDate ? new Date(campaignFormData.endDate) : undefined,
     });
   };
 
@@ -130,12 +119,14 @@ export default function Marketing() {
 
   const getCampaignTypeLabel = (type: string) => {
     switch (type) {
-      case 'promotional':
-        return 'Promocional';
+      case 'discount':
+        return 'Desconto';
       case 'reactivation':
         return 'Reativação';
       case 'referral':
         return 'Indicação';
+      case 'custom':
+        return 'Personalizada';
       default:
         return type;
     }
@@ -208,9 +199,10 @@ export default function Marketing() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="promotional">Promocional</SelectItem>
+                            <SelectItem value="discount">Desconto</SelectItem>
                             <SelectItem value="reactivation">Reativação</SelectItem>
                             <SelectItem value="referral">Indicação</SelectItem>
+                            <SelectItem value="custom">Personalizada</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -223,42 +215,6 @@ export default function Marketing() {
                             setCampaignFormData({ ...campaignFormData, description: e.target.value })
                           }
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="discount">Desconto (%)</Label>
-                        <Input
-                          id="discount"
-                          type="number"
-                          value={campaignFormData.discountPercentage}
-                          onChange={(e) =>
-                            setCampaignFormData({ ...campaignFormData, discountPercentage: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="startDate">Data Início *</Label>
-                          <Input
-                            id="startDate"
-                            type="date"
-                            value={campaignFormData.startDate}
-                            onChange={(e) =>
-                              setCampaignFormData({ ...campaignFormData, startDate: e.target.value })
-                            }
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="endDate">Data Fim</Label>
-                          <Input
-                            id="endDate"
-                            type="date"
-                            value={campaignFormData.endDate}
-                            onChange={(e) =>
-                              setCampaignFormData({ ...campaignFormData, endDate: e.target.value })
-                            }
-                          />
-                        </div>
                       </div>
                     </div>
                     <DialogFooter>
@@ -303,19 +259,9 @@ export default function Marketing() {
                           {campaign.description}
                         </p>
                       )}
-                      {campaign.discountPercentage && (
-                        <p className="text-sm font-semibold mb-2">
-                          Desconto: {campaign.discountPercentage}%
-                        </p>
-                      )}
                       <p className="text-xs text-muted-foreground">
-                        Início: {new Date(campaign.startDate).toLocaleDateString('pt-BR')}
+                        Criada em: {new Date(campaign.createdAt).toLocaleDateString('pt-BR')}
                       </p>
-                      {campaign.endDate && (
-                        <p className="text-xs text-muted-foreground">
-                          Fim: {new Date(campaign.endDate).toLocaleDateString('pt-BR')}
-                        </p>
-                      )}
                     </CardContent>
                   </Card>
                 ))

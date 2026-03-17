@@ -41,12 +41,12 @@ export default function BookingPage() {
 
   const queryClient = useQueryClient();
 
-  const { data: barbershop } = trpc.client.getBarbershop.useQuery({ slug });
-  const { data: me } = trpc.client.me.useQuery({ slug });
-  const { data: barbers_ } = trpc.client.getBarbers.useQuery({ slug });
-  const { data: services_ } = trpc.client.getServices.useQuery({ slug });
-  const { data: plans_ } = trpc.client.getPlans.useQuery({ slug });
-  const { data: slots, isLoading: slotsLoading } = trpc.client.getAvailableSlots.useQuery(
+  const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
+  const { data: me } = trpc.clientPortal.me.useQuery({ slug });
+  const { data: barbers_ } = trpc.clientPortal.getBarbers.useQuery({ slug });
+  const { data: services_ } = trpc.clientPortal.getServices.useQuery({ slug });
+  const { data: plans_ } = trpc.clientPortal.getPlans.useQuery({ slug });
+  const { data: slots, isLoading: slotsLoading } = trpc.clientPortal.getAvailableSlots.useQuery(
     { slug, barberId: selectedBarber?.id ?? 0, date: selectedDate },
     { enabled: !!selectedBarber && !!selectedDate }
   );
@@ -57,7 +57,7 @@ export default function BookingPage() {
   const totalPrice = selectedServices.reduce((sum, s) => sum + (s.priceInCents ?? 0), 0);
   const totalDuration = selectedServices.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
 
-  const bookMutation = trpc.client.bookAppointment.useMutation({
+  const bookMutation = trpc.clientPortal.bookAppointment.useMutation({
     onSuccess: (data) => {
       if ((data as any).checkoutUrl) {
         window.location.href = (data as any).checkoutUrl;

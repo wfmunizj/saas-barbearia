@@ -139,12 +139,11 @@ export default function BookingPage() {
   const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
   const currentStepIndex = STEPS.findIndex((s) => s.key === step);
 
-  // ── Glass card style ──────────────────────────────────────────────────────
-  const glassCard = {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
+  // ── Cream card style ──────────────────────────────────────────────────────
+  const creamCard = {
+    background: "#FFFFFF",
+    border: "1px solid #E8DFD0",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
   } as React.CSSProperties;
 
   // ── Not logged in ─────────────────────────────────────────────────────────
@@ -152,11 +151,11 @@ export default function BookingPage() {
     return (
       <div
         className="min-h-dvh flex items-center justify-center p-5"
-        style={{ backgroundColor: "#0a0a0a", fontFamily: "'Jost', sans-serif" }}
+        style={{ backgroundColor: "#FBF8F3", fontFamily: "'Jost', sans-serif" }}
       >
         <div
           className="w-full max-w-sm rounded-2xl p-8 text-center space-y-5"
-          style={glassCard}
+          style={creamCard}
         >
           <div
             className="h-16 w-16 rounded-[18px] mx-auto flex items-center justify-center"
@@ -169,12 +168,12 @@ export default function BookingPage() {
           </div>
           <div>
             <h2
-              className="text-xl font-bold text-white mb-1"
-              style={{ fontFamily: "'Bodoni Moda', serif" }}
+              className="text-xl font-bold mb-1"
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#2D2418" }}
             >
               Faça login para agendar
             </h2>
-            <p className="text-white/40 text-sm">Você precisa ter uma conta para agendar.</p>
+            <p className="text-sm" style={{ color: "#8B7355" }}>Você precisa ter uma conta para agendar.</p>
           </div>
           <div className="space-y-2 pt-1">
             <button

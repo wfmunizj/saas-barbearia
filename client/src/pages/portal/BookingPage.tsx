@@ -334,7 +334,7 @@ export default function BookingPage() {
                     {barber.name.split(" ").slice(0, 2).map((n: string) => n[0].toUpperCase()).join("")}
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold" style={{ color: "#0D0803" }}>{barber.name}</p>
+                    <p className="font-semibold text-neutral">{barber.name}</p>
                     {barber.specialties && (
                       <p className="text-sm mt-0.5" style={{ color: "#5C4A38" }}>{barber.specialties}</p>
                     )}
@@ -412,15 +412,15 @@ export default function BookingPage() {
                     key={plan.id}
                     className="p-4 rounded-2xl"
                     style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1.5px solid rgba(255,255,255,0.08)",
+                      background: "#FFFBF7",
+                      border: "1px solid #C9B8A6",
                     }}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-white">{plan.name}</p>
+                        <p className="font-semibold text-neutral">{plan.name}</p>
                         {plan.description && (
-                          <p className="text-xs text-white/40 mt-0.5">{plan.description}</p>
+                          <p className="text-xs" style={{ color: "#5C4A38" }} >{plan.description}</p>
                         )}
                       </div>
                       <span
@@ -428,7 +428,7 @@ export default function BookingPage() {
                         style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}
                       >
                         R$ {(plan.priceInCents / 100).toFixed(2).replace(".", ",")}
-                        <span className="text-[10px] text-white/30">/mês</span>
+                        <span style={{ color: "#5C4A38" }} className="text-[10px]">/mês</span>
                       </span>
                     </div>
                   </div>
@@ -446,8 +446,8 @@ export default function BookingPage() {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setStep("barber")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
-                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-neutral hover:text-neutral"
+                style={{ border: "1px solid #C9B8A6" }}
               >
                 Voltar
               </button>
@@ -495,8 +495,8 @@ export default function BookingPage() {
                   }}
                 >
                   <div>
-                    <p className="font-semibold text-white">{service.name}</p>
-                    <div className="flex items-center gap-1.5 mt-1 text-white/40 text-xs">
+                    <p className="font-semibold text-neutral">{service.name}</p>
+                    <div className="flex items-center gap-1.5 mt-1 text-neutral text-xs">
                       <Clock className="h-3 w-3" />
                       <span>{service.durationMinutes} min</span>
                     </div>
@@ -505,8 +505,8 @@ export default function BookingPage() {
                     <span
                       className="text-sm font-bold px-3 py-1.5 rounded-full"
                       style={{
-                        backgroundColor: isSelected ? `${primaryColor}20` : "rgba(255,255,255,0.08)",
-                        color: isSelected ? primaryColor : "rgba(255,255,255,0.7)",
+                        backgroundColor: isSelected ? `${primaryColor}20` : "#E8E0D4",
+                        color: isSelected ? primaryColor : "#0D0803",
                       }}
                     >
                       R$ {(service.priceInCents / 100).toFixed(2).replace(".", ",")}
@@ -540,8 +540,8 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => { setSelectedServices([]); setStep("plan"); }}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
-                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-neutral hover:text-neutral"
+                style={{ border: "1px solid #C9B8A6" }}
               >
                 Voltar
               </button>
@@ -556,7 +556,7 @@ export default function BookingPage() {
                         color: secondaryColor,
                         boxShadow: `0 4px 25px ${primaryColor}28`,
                       }
-                    : { background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.3)" }
+                    : { background: "#E8E0D4", color: "#9D8B7D" }
                 }
               >
                 Próximo
@@ -641,7 +641,7 @@ export default function BookingPage() {
                         color: secondaryColor,
                         boxShadow: `0 4px 25px ${primaryColor}28`,
                       }
-                    : { background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.3)" }
+                    : { background: "#E8E0D4", color: "#9D8B7D" }
                 }
               >
                 Continuar
@@ -721,8 +721,8 @@ export default function BookingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("date")}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-white/80 hover:text-white"
-                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 text-neutral hover:text-neutral"
+                style={{ border: "1px solid #C9B8A6" }}
               >
                 Voltar
               </button>
@@ -737,7 +737,7 @@ export default function BookingPage() {
                         color: secondaryColor,
                         boxShadow: `0 4px 25px ${primaryColor}28`,
                       }
-                    : { background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.3)" }
+                    : { background: "#E8E0D4", color: "#9D8B7D" }
                 }
               >
                 Continuar
@@ -789,12 +789,12 @@ export default function BookingPage() {
                   <Scissors className="h-4 w-4" style={{ color: primaryColor }} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-[11px] text-white/35 uppercase tracking-wider">Serviço(s)</p>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#5C4A38" }}>Serviço(s)</p>
                   <div className="space-y-1 mt-0.5">
                     {selectedServices.map((s) => (
                       <div key={s.id} className="flex justify-between text-sm">
-                        <span className="font-medium text-white">{s.name}</span>
-                        <span className="text-white/40">
+                        <span className="font-medium text-neutral">{s.name}</span>
+                        <span className="text-neutral">
                           {s.durationMinutes}min · R$ {(s.priceInCents / 100).toFixed(2).replace(".", ",")}
                         </span>
                       </div>
@@ -802,9 +802,9 @@ export default function BookingPage() {
                     {selectedServices.length > 1 && (
                       <div
                         className="flex justify-between text-sm font-bold pt-1 mt-1"
-                        style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
+                        style={{ borderTop: "1px solid #D9CCC0" }}
                       >
-                        <span className="text-white">Total</span>
+                        <span className="text-neutral">Total</span>
                         <span style={{ color: primaryColor }}>
                           {totalDuration}min · R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}
                         </span>

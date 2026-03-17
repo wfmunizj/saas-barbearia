@@ -1,5 +1,5 @@
-// A Vercel executa este arquivo como uma Serverless Function.
-// Ele apenas importa o servidor que já foi compilado pelo esbuild durante o build.
-import app from '../dist/index.js';
+// Vercel Serverless Function entry point
+// Importa o Express app compilado pelo esbuild (sem server.listen)
+import app from '../dist/handler.js';
 
 export default app;

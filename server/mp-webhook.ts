@@ -94,10 +94,23 @@ async function handlePaymentEvent(paymentId: string) {
   if (!db) return;
 
   const metadata = payment.metadata ?? {};
+
+  // O MP Checkout Pro nem sempre propaga o metadata para o objeto payment.
+  // Usamos external_reference (sempre preservado) como fallback.
+  // Formato: "clientUserId:X|planId:Y"  (definido em createSubscriptionCheckout)
+  const externalRef: string = payment.external_reference ?? "";
+  const extClientUserIdMatch = externalRef.match(/clientUserId:(\d+)/);
+  const extPlanIdMatch = externalRef.match(/planId:(\d+)/);
+  console.log(`[MPWebhook] external_reference="${externalRef}" metadata=${JSON.stringify(metadata)}`);
+
   const appointmentId = metadata.appointment_id ? parseInt(metadata.appointment_id) : null;
   const clientId = metadata.client_id ? parseInt(metadata.client_id) : null;
   const barbershopId = metadata.barbershop_id ? parseInt(metadata.barbershop_id) : null;
-  const planId = metadata.plan_id ? parseInt(metadata.plan_id) : null;
+
+  // planId: tenta metadata primeiro, depois external_reference
+  const planId =
+    (metadata.plan_id ? parseInt(metadata.plan_id) : null) ??
+    (extPlanIdMatch ? parseInt(extPlanIdMatch[1]) : null);
 
   if (payment.status === "approved") {
     // Pagamento de assinatura via Checkout Pro (fallback para planos sem mpPreapprovalPlanId).
@@ -107,8 +120,13 @@ async function handlePaymentEvent(paymentId: string) {
       // Não haverá evento subscription_preapproval — ativamos a assinatura aqui.
       // NOTA: não inserimos na tabela payments pois client_id lá referencia clients.id,
       // e aqui temos clientUsers.id — usar payments para assinaturas é fora do escopo.
-      const clientUserId = metadata.client_user_id ? parseInt(metadata.client_user_id) : null;
-      if (!clientUserId || !barbershopId) {
+      // clientUserId: tenta metadata primeiro, depois external_reference
+      const clientUserId =
+        (metadata.client_user_id ? parseInt(metadata.client_user_id) : null) ??
+        (extClientUserIdMatch ? parseInt(extClientUserIdMatch[1]) : null);
+
+      // barbershopId virá do plano (buscado a seguir) quando metadata não tiver
+      if (!clientUserId) {
         console.error("[MPWebhook] Metadata incompleto para ativação de assinatura:", metadata);
         return;
       }

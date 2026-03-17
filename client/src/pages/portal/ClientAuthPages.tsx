@@ -418,9 +418,12 @@ export function ClientRegisterPage() {
         toast.error(data.error ?? "Erro ao criar conta");
         return;
       }
-      toast.success("Conta criada com sucesso!");
+      toast.success("Conta criada com sucesso! Verifique seu email.");
       trackEvent("sign_up_client", { barbershop_slug: slug ?? "" });
-      if (planId) {
+      // Redirecionar para página de verificação de email
+      if (data.requiresVerification) {
+        window.location.href = `/b/${slug}/verificar-email`;
+      } else if (planId) {
         window.location.href = `/b/${slug}/assinar/${planId}`;
       } else {
         window.location.href = redirect ? `/b/${slug}/${redirect}` : `/b/${slug}`;

@@ -13,6 +13,7 @@ import { sdk } from "./_core/sdk";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { COOKIE_NAME } from "@shared/const";
 import { ENV } from "./_core/env";
+import { createVerificationToken, sendVerificationEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,13 +165,26 @@ export async function registerBarbershop(req: Request, res: Response) {
       console.error("[Auth] Falha ao iniciar trial:", err);
     }
 
+    // ─── Enviar email de verificação ───────────────────────────────────────────
+    try {
+      const verifyToken = await createVerificationToken("owner", user.id, email);
+      await sendVerificationEmail(email, ownerName, verifyToken, {
+        barbershopName: barbershopName,
+        userType: "owner",
+      });
+    } catch (err) {
+      console.error("[Auth] Falha ao enviar email de verificação:", err);
+    }
+
     return res.json({
       success: true,
+      requiresVerification: true,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
+        emailVerified: false,
       },
       barbershop: {
         id: barbershop.id,
@@ -252,6 +266,7 @@ export async function loginWithEmail(req: Request, res: Response) {
         name: user.name,
         email: user.email,
         role: user.role,
+        emailVerified: user.emailVerified,
       },
       barbershop,
     });
@@ -318,6 +333,7 @@ export async function getCurrentUser(req: Request, res: Response) {
         name: user.name,
         email: user.email,
         role: user.role,
+        emailVerified: user.emailVerified,
       },
       barbershop,
     });

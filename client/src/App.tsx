@@ -30,13 +30,15 @@ import ClientAccountPage from "./pages/portal/ClientAccountPage";
 import { ClientLoginPage, ClientRegisterPage } from "./pages/portal/ClientAuthPages";
 import SubscribePage from "./pages/portal/Subscribepage";
 import Subscription from "./pages/Subscription";
+import VerifyEmail from "./pages/VerifyEmail";
+import VerifyEmailPage from "./pages/portal/VerifyEmailPage";
 
 
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 
 // Rotas que não precisam de assinatura ativa
-const PUBLIC_ROUTES = ["/login", "/register", "/subscription"];
+const PUBLIC_ROUTES = ["/login", "/register", "/subscription", "/verificar-email"];
 
 function SaasGuard() {
   const [location, navigate] = useLocation();
@@ -99,6 +101,7 @@ function Router() {
       <Route path="/plans" component={Plans} />
       <Route path="/subscription" component={Subscription} />
       <Route path="/nova-barbearia" component={NewBarbershop} />
+      <Route path="/verificar-email" component={VerifyEmail} />
 
       {/* ─── Portal público da barbearia ──────────────────────── */}
       <Route path="/b/:slug" component={BarbershopPage} />
@@ -107,6 +110,7 @@ function Router() {
       <Route path="/b/:slug/assinar/:planId" component={SubscribePage} />
       <Route path="/b/:slug/login" component={ClientLoginPage} />
       <Route path="/b/:slug/cadastro" component={ClientRegisterPage} />
+      <Route path="/b/:slug/verificar-email" component={VerifyEmailPage} />
 
       {/* ─── 404 ──────────────────────────────────────────────── */}
       <Route path="/404" component={NotFound} />

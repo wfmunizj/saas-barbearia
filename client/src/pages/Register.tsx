@@ -54,8 +54,12 @@ export default function Register() {
         return;
       }
 
-      toast.success(`Barbearia "${data.barbershop.name}" criada com sucesso!`);
-      navigate("/");
+      toast.success(`Barbearia "${data.barbershop.name}" criada com sucesso! Verifique seu email.`);
+      if (data.requiresVerification) {
+        navigate("/verificar-email");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       toast.error("Erro de conexão. Tente novamente.");
     } finally {

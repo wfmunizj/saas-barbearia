@@ -35,10 +35,22 @@ import { ENV } from "./_core/env";
 let _db: ReturnType<typeof drizzle> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
 
+// Detecta ambiente serverless (Vercel)
+const isServerless = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _client = postgres(process.env.DATABASE_URL, { ssl: "require" });
+      _client = postgres(process.env.DATABASE_URL, {
+        ssl: "require",
+        // CRÍTICO para Supabase PgBouncer (transaction mode):
+        // prepared statements não são suportados no pooler → causa ETIMEDOUT
+        prepare: false,
+        // Serverless: 1 conexão por invocação para não esgotar o pool
+        max: isServerless ? 1 : 10,
+        idle_timeout: isServerless ? 20 : 30,
+        connect_timeout: 10,
+      });
       _db = drizzle(_client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);

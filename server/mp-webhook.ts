@@ -112,6 +112,66 @@ async function handlePaymentEvent(paymentId: string) {
     (metadata.plan_id ? parseInt(metadata.plan_id) : null) ??
     (extPlanIdMatch ? parseInt(extPlanIdMatch[1]) : null);
 
+  // ── Detectar pagamento SaaS (dono da barbearia assinando a plataforma) ─────────
+  // O external_reference SaaS começa com "saas|" e o metadata tem type="saas_subscription".
+  // Sem este guard, o regex /planId:(\d+)/ captura o planId do external_reference SaaS
+  // e o código tenta ativar uma assinatura de cliente — o que causa "Metadata incompleto".
+  const isSaasPayment =
+    metadata.type === "saas_subscription" || externalRef.startsWith("saas|");
+
+  if (isSaasPayment) {
+    if (payment.status !== "approved") return; // aguardar aprovação
+
+    const saasBarShopIdStr = metadata.barbershop_id as string | undefined;
+    const saasPlanIdStr = metadata.saas_plan_id as string | undefined;
+
+    // Fallback: parse do external_reference ("saas|barbershopId:X|planId:Y")
+    const extBsMatch = externalRef.match(/barbershopId:(\d+)/);
+    const extSpMatch = externalRef.match(/planId:(\d+)/);
+    const saasBarbershopId = saasBarShopIdStr
+      ? parseInt(saasBarShopIdStr)
+      : extBsMatch ? parseInt(extBsMatch[1]) : null;
+    const saasPlanId = saasPlanIdStr
+      ? parseInt(saasPlanIdStr)
+      : extSpMatch ? parseInt(extSpMatch[1]) : null;
+
+    if (!saasBarbershopId || !saasPlanId) {
+      console.error("[MPWebhook] SaaS: metadata incompleto:", metadata);
+      return;
+    }
+
+    // Idempotência: se já está ativo, ignorar
+    const existingRows = await db.execute(
+      `SELECT id, status FROM saas_subscriptions WHERE barbershop_id = ${saasBarbershopId} LIMIT 1` as any
+    );
+    const rows = Array.isArray(existingRows) ? existingRows : ((existingRows as any).rows ?? []);
+    const existingSaasSub = rows[0];
+
+    if (existingSaasSub?.status === "active") {
+      console.log("[MPWebhook] SaaS: assinatura já ativa — ignorando:", paymentId);
+      return;
+    }
+
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    if (existingSaasSub) {
+      await db.execute(
+        `UPDATE saas_subscriptions SET status='active', saas_plan_id=${saasPlanId},
+         current_period_end='${periodEnd.toISOString()}', cancelled_at=NULL, updated_at=NOW()
+         WHERE barbershop_id=${saasBarbershopId}` as any
+      );
+    } else {
+      await db.execute(
+        `INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, current_period_end)
+         VALUES (${saasBarbershopId}, ${saasPlanId}, 'active', '${periodEnd.toISOString()}')` as any
+      );
+    }
+
+    console.log(`[MPWebhook] Assinatura SaaS ativada — barbershop:${saasBarbershopId} plano:${saasPlanId}`);
+    return;
+  }
+
   if (payment.status === "approved") {
     // Pagamento de assinatura via Checkout Pro (fallback para planos sem mpPreapprovalPlanId).
     // Não há evento subscription_preapproval neste caminho — ativamos a assinatura aqui.

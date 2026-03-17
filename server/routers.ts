@@ -150,6 +150,38 @@ export const appRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "Este slug já está em uso. Escolha outro." });
         }
 
+        // ─── Verifica limite de barbearias do plano SaaS ─────────────────────
+        const shopSubResult = await dbInstance.execute(
+          ("SELECT sp.max_barbershops FROM saas_subscriptions ss " +
+            "JOIN saas_plans sp ON sp.id = ss.saas_plan_id " +
+            "WHERE ss.barbershop_id IN (" +
+            "  SELECT id FROM barbershops WHERE owner_id = " + userId +
+            ") " +
+            "AND ss.status IN ('active','trialing') " +
+            "ORDER BY CASE WHEN ss.status = 'active' THEN 0 ELSE 1 END ASC " +
+            "LIMIT 1") as any
+        );
+        const shopSubRows = Array.isArray(shopSubResult)
+          ? shopSubResult
+          : ((shopSubResult as any).rows ?? []);
+        const maxBarbershops: number = shopSubRows[0]?.max_barbershops ?? 2;
+
+        const shopCountResult = await dbInstance.execute(
+          ("SELECT COUNT(*) as total FROM barbershops WHERE owner_id = " + userId) as any
+        );
+        const shopCountRows = Array.isArray(shopCountResult)
+          ? shopCountResult
+          : ((shopCountResult as any).rows ?? []);
+        const totalShops = parseInt(shopCountRows[0]?.total ?? "0");
+
+        if (maxBarbershops !== -1 && totalShops >= maxBarbershops) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Seu plano permite até ${maxBarbershops} barbearia${maxBarbershops !== 1 ? "s" : ""}. Faça upgrade para o Premium para criar mais.`,
+          });
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         const [newShop] = await dbInstance.insert(barbershops).values({
           name: input.name,
           slug: input.slug,
@@ -330,55 +362,43 @@ export const appRouter = router({
         if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
         // ─── Verifica limite do plano SaaS ───────────────────────────────────
+        const userId = (ctx.user as any).id; // ownerId — NÃO usar getBarbershopId()
+
+        // Subscription resolvida pelo owner (cobre todas as barbearias dele)
         const subResult = await dbInstance.execute(
-          ("SELECT ss.status, ss.trial_ends_at, sp.max_barbers " +
-            "FROM saas_subscriptions ss " +
+          ("SELECT sp.max_barbers FROM saas_subscriptions ss " +
             "JOIN saas_plans sp ON sp.id = ss.saas_plan_id " +
-            "WHERE ss.barbershop_id = " +
-            barbershopId +
-            " LIMIT 1") as any
+            "WHERE ss.barbershop_id IN (" +
+            "  SELECT id FROM barbershops WHERE owner_id = " + userId +
+            ") " +
+            "AND ss.status IN ('active','trialing') " +
+            "ORDER BY CASE WHEN ss.status = 'active' THEN 0 ELSE 1 END ASC " +
+            "LIMIT 1") as any
         );
         const subRows = Array.isArray(subResult)
           ? subResult
           : ((subResult as any).rows ?? []);
         const sub = subRows[0];
 
-        if (sub) {
-          // Verifica se assinatura está ativa
-          const isTrialing =
-            sub.status === "trialing" &&
-            new Date(sub.trial_ends_at) >= new Date();
-          const isActive = sub.status === "active";
-          if (!isTrialing && !isActive) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message:
-                "Sua assinatura está inativa. Acesse 'Minha Assinatura' para reativar.",
-            });
-          }
+        // Contagem GLOBAL de barbeiros ativos em TODAS as barbearias do owner
+        const countResult = await dbInstance.execute(
+          ("SELECT COUNT(*) as total FROM barbers " +
+            "WHERE barbershop_id IN (" +
+            "  SELECT id FROM barbershops WHERE owner_id = " + userId +
+            ") " +
+            "AND is_active = true") as any
+        );
+        const countRows = Array.isArray(countResult)
+          ? countResult
+          : ((countResult as any).rows ?? []);
+        const total = parseInt(countRows[0]?.total ?? "0");
 
-          // Verifica limite de barbeiros (-1 = ilimitado)
-          if (sub.max_barbers !== -1) {
-            const countResult = await dbInstance.execute(
-              ("SELECT COUNT(*) as total FROM barbers " +
-                "WHERE barbershop_id = " +
-                barbershopId +
-                " AND is_active = true") as any
-            );
-            const countRows = Array.isArray(countResult)
-              ? countResult
-              : ((countResult as any).rows ?? []);
-            const total = parseInt(
-              countRows[0]?.total ?? countRows[0]?.count ?? "0"
-            );
-
-            if (total >= sub.max_barbers) {
-              throw new TRPCError({
-                code: "FORBIDDEN",
-                message: `Seu plano permite até ${sub.max_barbers} barbeiro${sub.max_barbers !== 1 ? "s" : ""}. Faça upgrade para adicionar mais.`,
-              });
-            }
-          }
+        // sub inexistente → sem subscription = sem bloqueio (comportamento legado)
+        if (sub && sub.max_barbers !== -1 && total >= sub.max_barbers) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Seu plano permite até ${sub.max_barbers} barbeiro${sub.max_barbers !== 1 ? "s" : ""} no total. Faça upgrade para adicionar mais.`,
+          });
         }
         // ─────────────────────────────────────────────────────────────────────
 

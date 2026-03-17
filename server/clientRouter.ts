@@ -526,18 +526,18 @@ export const clientPortalRouter = router({
           if (existingSub) {
             await db
               .update(subscriptions)
-              .set({ planId: plan.id, barbershopId: plan.barbershopId, status: "pending", updatedAt: new Date() })
+              .set({ planId: plan.id, barbershopId: plan.barbershopId, status: "trialing", updatedAt: new Date() })
               .where(eq(subscriptions.id, existingSub.id));
           } else {
             await db.insert(subscriptions).values({
               clientUserId: clientUser.id,
               planId: plan.id,
               barbershopId: plan.barbershopId,
-              status: "pending",
+              status: "trialing",
               creditsRemaining: 0,
             });
           }
-          console.log(`[SubscriptionCheckout] Pending criado — clientUser:${clientUser.id} plano:${plan.id}`);
+          console.log(`[SubscriptionCheckout] Trialing criado — clientUser:${clientUser.id} plano:${plan.id}`);
         }
 
         const checkoutUrl = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${plan.mpPreapprovalPlanId}`;

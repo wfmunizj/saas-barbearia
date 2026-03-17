@@ -13,7 +13,7 @@
 import { Request, Response } from "express";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 
@@ -103,20 +103,13 @@ async function handlePaymentEvent(paymentId: string) {
     // Pagamento de assinatura via Checkout Pro (fallback para planos sem mpPreapprovalPlanId).
     // Não há evento subscription_preapproval neste caminho — ativamos a assinatura aqui.
     if (planId) {
+      // Checkout Pro usado como fallback para planos sem mpPreapprovalPlanId.
+      // Não haverá evento subscription_preapproval — ativamos a assinatura aqui.
+      // NOTA: não inserimos na tabela payments pois client_id lá referencia clients.id,
+      // e aqui temos clientUsers.id — usar payments para assinaturas é fora do escopo.
       const clientUserId = metadata.client_user_id ? parseInt(metadata.client_user_id) : null;
       if (!clientUserId || !barbershopId) {
         console.error("[MPWebhook] Metadata incompleto para ativação de assinatura:", metadata);
-        return;
-      }
-
-      // Idempotência
-      const [existingPayment] = await db
-        .select({ id: payments.id })
-        .from(payments)
-        .where(eq(payments.mpPaymentId, String(paymentId)))
-        .limit(1);
-      if (existingPayment) {
-        console.log("[MPWebhook] Pagamento de assinatura já processado:", paymentId);
         return;
       }
 
@@ -126,20 +119,6 @@ async function handlePaymentEvent(paymentId: string) {
         console.error("[MPWebhook] Plano não encontrado:", planId);
         return;
       }
-
-      // Registrar pagamento
-      const pmMethodSub = payment.payment_type_id === "bank_transfer" ? "pix"
-        : payment.payment_type_id === "ticket" ? "boleto"
-        : "card";
-      await db.insert(payments).values({
-        clientId: clientUserId,
-        barbershopId,
-        amountInCents: Math.round((payment.transaction_amount ?? 0) * 100),
-        status: "completed",
-        paymentMethod: pmMethodSub,
-        mpPaymentId: String(paymentId),
-        mpPreferenceId: payment.preference_id ?? null,
-      });
 
       // Criar/ativar assinatura por 1 mês
       const now = new Date();
@@ -151,6 +130,12 @@ async function handlePaymentEvent(paymentId: string) {
         .from(subscriptions)
         .where(eq(subscriptions.clientUserId, clientUserId))
         .limit(1);
+
+      // Idempotência: não reprocessar se já está ativo com o mesmo mpPayerId
+      if (existingSub?.status === "active" && existingSub.mpPayerId === String(payment.payer?.id ?? "")) {
+        console.log("[MPWebhook] Assinatura Checkout Pro já ativa — ignorando:", paymentId);
+        return;
+      }
 
       if (existingSub) {
         await db.update(subscriptions).set({
@@ -291,10 +276,15 @@ async function handleSubscriptionEvent(subscriptionId: string) {
     // Isso cobre o caso onde o e-mail da conta MP é diferente do e-mail cadastrado na plataforma.
     // A assinatura pending é criada em createSubscriptionCheckout antes de redirecionar ao MP.
     if (!clientUser) {
+      // Busca assinatura em "trialing" sem mpSubscriptionId — indica pre-checkout criado em createSubscriptionCheckout
       const [pendingSub] = await db
         .select({ clientUserId: subscriptions.clientUserId })
         .from(subscriptions)
-        .where(and(eq(subscriptions.planId, plan.id), eq(subscriptions.status, "pending")))
+        .where(and(
+          eq(subscriptions.planId, plan.id),
+          eq(subscriptions.status, "trialing"),
+          isNull(subscriptions.mpSubscriptionId),
+        ))
         .orderBy(desc(subscriptions.updatedAt))
         .limit(1);
 

@@ -454,8 +454,8 @@ export const appRouter = router({
           .limit(1);
         if (!barber) throw new TRPCError({ code: "NOT_FOUND", message: "Barbeiro não encontrado." });
 
-        const start = input.startDate ? new Date(input.startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        const end = input.endDate ? new Date(input.endDate) : new Date();
+        const start = input.startDate ? new Date(input.startDate + "T00:00:00-03:00") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const end = input.endDate ? new Date(input.endDate + "T23:59:59-03:00") : new Date();
 
         // Agendamentos do barbeiro no período
         const appts = await dbInstance.select({
@@ -595,8 +595,8 @@ export const appRouter = router({
         const linkedBarber = await db.getBarberByUserId(userId);
 
         return db.getAppointments(barbershopId, {
-          startDate: input?.startDate ? new Date(input.startDate) : undefined,
-          endDate: input?.endDate ? new Date(input.endDate) : undefined,
+          startDate: input?.startDate ? new Date(input.startDate + "T00:00:00-03:00") : undefined,
+          endDate: input?.endDate ? new Date(input.endDate + "T23:59:59-03:00") : undefined,
           barberId: linkedBarber?.id ?? undefined, // undefined = sem filtro (owner vê todos)
         });
       }),
@@ -958,8 +958,8 @@ export const appRouter = router({
           eq(barberFichaRecords.barberId, input.barberId),
           eq(barberFichaRecords.barbershopId, barbershopId),
         ];
-        if (input.startDate) conditions.push(gte(barberFichaRecords.createdAt, new Date(input.startDate)));
-        if (input.endDate) conditions.push(lte(barberFichaRecords.createdAt, new Date(input.endDate + "T23:59:59")));
+        if (input.startDate) conditions.push(gte(barberFichaRecords.createdAt, new Date(input.startDate + "T00:00:00-03:00")));
+        if (input.endDate) conditions.push(lte(barberFichaRecords.createdAt, new Date(input.endDate + "T23:59:59-03:00")));
 
         const records = await dbInstance.select({
           id: barberFichaRecords.id,
@@ -1000,8 +1000,10 @@ export const appRouter = router({
         // Se for barbeiro, filtra apenas pagamentos dos agendamentos dele
         const linkedBarber = await db.getBarberByUserId(userId);
         return db.getPayments(barbershopId, linkedBarber?.id ?? undefined, {
-          startDate: input?.startDate ? new Date(input.startDate) : undefined,
-          endDate:   input?.endDate   ? new Date(input.endDate)   : undefined,
+          // startDate: início do dia em Brasília (T00:00:00-03:00)
+          startDate: input?.startDate ? new Date(input.startDate + "T00:00:00-03:00") : undefined,
+          // endDate: fim do dia em Brasília (T23:59:59-03:00) — evita corte às 21h UTC
+          endDate:   input?.endDate   ? new Date(input.endDate   + "T23:59:59-03:00") : undefined,
         });
       }),
   }),

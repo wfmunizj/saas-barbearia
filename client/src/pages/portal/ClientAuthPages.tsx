@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { trackEvent } from "@/lib/analytics";
 import { Scissors, Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
@@ -418,6 +419,7 @@ export function ClientRegisterPage() {
         return;
       }
       toast.success("Conta criada com sucesso!");
+      trackEvent("sign_up_client", { barbershop_slug: slug ?? "" });
       if (planId) {
         window.location.href = `/b/${slug}/assinar/${planId}`;
       } else {

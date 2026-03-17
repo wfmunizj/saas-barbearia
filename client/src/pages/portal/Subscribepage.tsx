@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Star, DollarSign, Loader2, CheckCircle2, CreditCard, Infinity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { trackEvent } from "@/lib/analytics";
 
 export default function SubscribePage() {
   const { slug, planId } = useParams<{ slug: string; planId: string }>();
@@ -22,6 +23,10 @@ export default function SubscribePage() {
 
   const checkoutMutation = trpc.clientPortal.createSubscriptionCheckout.useMutation({
     onSuccess: (data) => {
+      trackEvent("subscription_started", {
+        barbershop_slug: slug ?? "",
+        plan_name: plan?.name ?? "",
+      });
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {

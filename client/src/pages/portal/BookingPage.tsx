@@ -11,6 +11,7 @@ import {
   ArrowLeft, Check, Clock, User, Scissors, CalendarIcon, Loader2, Users, CreditCard, Store,
 } from "lucide-react";
 import { toast } from "sonner";
+import { trackEvent } from "@/lib/analytics";
 
 type Step = "barber" | "plan" | "service" | "date" | "time" | "confirm";
 
@@ -63,6 +64,10 @@ export default function BookingPage() {
         window.location.href = (data as any).checkoutUrl;
         return;
       }
+      trackEvent("booking_created", {
+        barbershop_slug: slug ?? "",
+        service_count: selectedServices.length,
+      });
       if (isGuestBooking) {
         toast.success(`Agendamento confirmado para ${guestName}!`);
       } else {

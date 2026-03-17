@@ -151,7 +151,7 @@ export default function BookingPage() {
     return (
       <div
         className="min-h-dvh flex items-center justify-center p-5"
-        style={{ backgroundColor: "#FBF8F3", fontFamily: "'Jost', sans-serif" }}
+        style={{ backgroundColor: "#F5F0E8", fontFamily: "'Jost', sans-serif" }}
       >
         <div
           className="w-full max-w-sm rounded-2xl p-8 text-center space-y-5"
@@ -203,7 +203,7 @@ export default function BookingPage() {
   return (
     <div
       className="min-h-dvh"
-      style={{ backgroundColor: "#FBF8F3", fontFamily: "'Jost', sans-serif" }}
+      style={{ backgroundColor: "#F5F0E8", fontFamily: "'Jost', sans-serif" }}
     >
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
@@ -211,27 +211,27 @@ export default function BookingPage() {
         className="sticky top-0 z-40"
         style={{
           background: "#FFFFFF",
-          borderBottom: "1px solid #E8DFD0",
+          borderBottom: "1px solid #C9B8A6",
         }}
       >
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-3">
           <button
             onClick={() => navigate(`/b/${slug}`)}
             className="h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer"
-            style={{ color: "#6B5544" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#1A120A"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#6B5544"}
+            style={{ color: "#5C4A38" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#0D0803"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#5C4A38"}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <span
             className="font-bold"
-            style={{ fontFamily: "'Jost', sans-serif", color: "#1A120A" }}
+            style={{ fontFamily: "'Jost', sans-serif", color: "#0D0803" }}
           >
             Agendar
           </span>
           {barbershop?.name && (
-            <span className="text-sm hidden sm:inline" style={{ color: "#6B5544" }}>· {barbershop.name}</span>
+            <span className="text-sm hidden sm:inline" style={{ color: "#5C4A38" }}>· {barbershop.name}</span>
           )}
         </div>
       </header>
@@ -240,8 +240,8 @@ export default function BookingPage() {
       <div
         className="sticky top-14 z-30"
         style={{
-          background: "#FBF8F3",
-          borderBottom: "1px solid #E8DFD0",
+          background: "#F5F0E8",
+          borderBottom: "1px solid #C9B8A6",
         }}
       >
         <div className="max-w-2xl mx-auto px-4 py-3">
@@ -261,8 +261,8 @@ export default function BookingPage() {
                             boxShadow: `0 0 14px ${primaryColor}50`,
                           }
                         : {
-                            background: "#E8DFD0",
-                            color: "#B8A88A",
+                            background: "#D9CCC0",
+                            color: "#5C4A38",
                           }
                     }
                   >
@@ -274,7 +274,7 @@ export default function BookingPage() {
                   </div>
                   <span
                     className="text-[10px] hidden sm:block transition-colors duration-200"
-                    style={{ color: i <= currentStepIndex ? "#1A120A" : "#9D8B7D" }}
+                    style={{ color: i <= currentStepIndex ? "#0D0803" : "#5C4A38" }}
                   >
                     {s.label}
                   </span>
@@ -284,7 +284,7 @@ export default function BookingPage() {
                     className="flex-1 h-px mx-2 mb-3 sm:mb-0 transition-all duration-500"
                     style={{
                       backgroundColor:
-                        i < currentStepIndex ? primaryColor : "#D8CCC0",
+                        i < currentStepIndex ? primaryColor : "#C9B8A6",
                     }}
                   />
                 )}
@@ -307,7 +307,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Escolha o barbeiro
             </h2>
@@ -319,9 +319,9 @@ export default function BookingPage() {
                   onClick={() => setSelectedBarber(barber)}
                   className="w-full text-left p-4 rounded-2xl transition-all duration-200 flex items-center gap-4 cursor-pointer"
                   style={{
-                    background: isSelected ? `${primaryColor}12` : "#FFFFFF",
-                    border: `${isSelected ? "2px solid" : "1px solid"} ${isSelected ? primaryColor : "#D8CCC0"}`,
-                    boxShadow: isSelected ? `0 0 20px ${primaryColor}20, 0 2px 8px rgba(0,0,0,0.08)` : "0 2px 4px rgba(0,0,0,0.05)",
+                    background: isSelected ? `${primaryColor}12` : "#FFFBF7",
+                    border: `${isSelected ? "2px solid" : "1px solid"} ${isSelected ? primaryColor : "#C9B8A6"}`,
+                    boxShadow: isSelected ? `0 0 20px ${primaryColor}20, 0 2px 8px rgba(0,0,0,0.1)` : "0 1px 3px rgba(0,0,0,0.08)",
                   }}
                 >
                   <div
@@ -334,9 +334,9 @@ export default function BookingPage() {
                     {barber.name.split(" ").slice(0, 2).map((n: string) => n[0].toUpperCase()).join("")}
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold" style={{ color: "#1A120A" }}>{barber.name}</p>
+                    <p className="font-semibold" style={{ color: "#0D0803" }}>{barber.name}</p>
                     {barber.specialties && (
-                      <p className="text-sm mt-0.5" style={{ color: "#6B5544" }}>{barber.specialties}</p>
+                      <p className="text-sm mt-0.5" style={{ color: "#5C4A38" }}>{barber.specialties}</p>
                     )}
                   </div>
                   {isSelected && (
@@ -366,7 +366,7 @@ export default function BookingPage() {
                       color: secondaryColor,
                       boxShadow: `0 4px 25px ${primaryColor}28`,
                     }
-                  : { background: "#D8CCC0", color: "#9D8B7D" }
+                  : { background: "#C9B8A6", color: "#5C4A38" }
               }
             >
               Continuar
@@ -379,7 +379,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Plano de assinatura
             </h2>
@@ -471,7 +471,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Escolha o(s) serviço(s)
             </h2>
@@ -570,7 +570,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Escolha a data
             </h2>
@@ -655,7 +655,7 @@ export default function BookingPage() {
           <div className="space-y-3 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Escolha o horário
             </h2>
@@ -751,7 +751,7 @@ export default function BookingPage() {
           <div className="space-y-4 portal-step-animate">
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "'Bodoni Moda', serif", color: "#1A120A" }}
+              style={{ fontFamily: "'Bodoni Moda', serif", color: "#0D0803" }}
             >
               Confirmar Agendamento
             </h2>

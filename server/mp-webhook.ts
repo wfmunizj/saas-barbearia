@@ -100,9 +100,84 @@ async function handlePaymentEvent(paymentId: string) {
   const planId = metadata.plan_id ? parseInt(metadata.plan_id) : null;
 
   if (payment.status === "approved") {
-    // Se é pagamento de assinatura, não registra aqui (vem via subscription_preapproval)
+    // Pagamento de assinatura via Checkout Pro (fallback para planos sem mpPreapprovalPlanId).
+    // Não há evento subscription_preapproval neste caminho — ativamos a assinatura aqui.
     if (planId) {
-      console.log("[MPWebhook] Pagamento de assinatura — tratado via subscription_preapproval");
+      const clientUserId = metadata.client_user_id ? parseInt(metadata.client_user_id) : null;
+      if (!clientUserId || !barbershopId) {
+        console.error("[MPWebhook] Metadata incompleto para ativação de assinatura:", metadata);
+        return;
+      }
+
+      // Idempotência
+      const [existingPayment] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(eq(payments.mpPaymentId, String(paymentId)))
+        .limit(1);
+      if (existingPayment) {
+        console.log("[MPWebhook] Pagamento de assinatura já processado:", paymentId);
+        return;
+      }
+
+      // Buscar plano para obter creditsPerMonth
+      const [plan] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+      if (!plan) {
+        console.error("[MPWebhook] Plano não encontrado:", planId);
+        return;
+      }
+
+      // Registrar pagamento
+      const pmMethodSub = payment.payment_type_id === "bank_transfer" ? "pix"
+        : payment.payment_type_id === "ticket" ? "boleto"
+        : "card";
+      await db.insert(payments).values({
+        clientId: clientUserId,
+        barbershopId,
+        amountInCents: Math.round((payment.transaction_amount ?? 0) * 100),
+        status: "completed",
+        paymentMethod: pmMethodSub,
+        mpPaymentId: String(paymentId),
+        mpPreferenceId: payment.preference_id ?? null,
+      });
+
+      // Criar/ativar assinatura por 1 mês
+      const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      const [existingSub] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.clientUserId, clientUserId))
+        .limit(1);
+
+      if (existingSub) {
+        await db.update(subscriptions).set({
+          planId: plan.id,
+          barbershopId: plan.barbershopId,
+          status: "active",
+          mpPayerId: String(payment.payer?.id ?? ""),
+          creditsRemaining: plan.creditsPerMonth,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          cancelledAt: null,
+          updatedAt: now,
+        }).where(eq(subscriptions.id, existingSub.id));
+      } else {
+        await db.insert(subscriptions).values({
+          clientUserId,
+          planId: plan.id,
+          barbershopId: plan.barbershopId,
+          status: "active",
+          mpPayerId: String(payment.payer?.id ?? ""),
+          creditsRemaining: plan.creditsPerMonth,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+        });
+      }
+
+      console.log(`[MPWebhook] Assinatura ativada via Checkout Pro — clientUser:${clientUserId} plano:${planId}`);
       return;
     }
 

@@ -11,11 +11,57 @@
  *   - subscription_preapproval_plan → sincronização de plano SaaS
  */
 import { Request, Response } from "express";
+import { createHmac, timingSafeEqual } from "crypto";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
+
+function verifyMpSignature(req: Request, eventId: string): boolean {
+  // If no secret configured, skip verification (dev mode)
+  if (!MP_WEBHOOK_SECRET) {
+    console.warn("[MPWebhook] MP_WEBHOOK_SECRET not set — skipping signature verification");
+    return true;
+  }
+
+  const signatureHeader = req.headers["x-signature"] as string | undefined;
+  const requestId = req.headers["x-request-id"] as string | undefined;
+
+  if (!signatureHeader || !requestId) {
+    return false;
+  }
+
+  // Parse ts and v1 from the header (format: "ts=...,v1=...")
+  const parts = Object.fromEntries(
+    signatureHeader.split(",").map(part => {
+      const [k, ...v] = part.split("=");
+      return [k.trim(), v.join("=").trim()];
+    })
+  );
+  const ts = parts["ts"];
+  const v1 = parts["v1"];
+  if (!ts || !v1) return false;
+
+  // Build the signed message
+  const message = `id:${eventId};request-id:${requestId};ts:${ts};`;
+
+  // Compute expected signature
+  const expected = createHmac("sha256", MP_WEBHOOK_SECRET)
+    .update(message)
+    .digest("hex");
+
+  // Timing-safe comparison
+  try {
+    const expectedBuf = Buffer.from(expected, "hex");
+    const receivedBuf = Buffer.from(v1, "hex");
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return timingSafeEqual(expectedBuf, receivedBuf);
+  } catch {
+    return false;
+  }
+}
 
 // ─── Helper: busca dados de um pagamento no MP ────────────────────────────────
 async function getMpPayment(paymentId: string) {
@@ -57,6 +103,14 @@ export async function handleMpWebhook(req: Request, res: Response) {
   if (!eventTopic || !eventId) {
     // MP às vezes envia pings de teste sem dados — responder 200
     return res.status(200).json({ received: true });
+  }
+
+  // Verify MP webhook signature
+  if (eventTopic && eventId) {
+    if (!verifyMpSignature(req, eventId)) {
+      console.warn("[MPWebhook] Assinatura inválida — requisição rejeitada");
+      return res.status(401).json({ error: "Invalid signature" });
+    }
   }
 
   try {

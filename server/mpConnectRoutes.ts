@@ -12,11 +12,36 @@
  *   4. Trocamos code por access_token e salvamos no banco
  */
 import { Router, Request, Response } from "express";
+import { SignJWT, jwtVerify } from "jose";
+import { randomBytes } from "crypto";
 import { getDb } from "./db";
 import { barbershops, users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
+
+const STATE_SECRET = new TextEncoder().encode(
+  (process.env.JWT_SECRET ?? "") + "-oauth-state"
+);
+
+async function createOAuthState(barbershopId: number, userId: number): Promise<string> {
+  return new SignJWT({ barbershopId, userId, nonce: randomBytes(8).toString("hex") })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("10m") // state expires in 10 minutes
+    .sign(STATE_SECRET);
+}
+
+async function verifyOAuthState(state: string): Promise<{ barbershopId: number; userId: number } | null> {
+  try {
+    const { payload } = await jwtVerify(state, STATE_SECRET, { algorithms: ["HS256"] });
+    return {
+      barbershopId: payload.barbershopId as number,
+      userId: payload.userId as number,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const mpConnectRouter = Router();
 
@@ -74,7 +99,7 @@ mpConnectRouter.post("/connect/auth-url", async (req: Request, res: Response) =>
   if (!auth) return res.status(401).json({ error: "Não autorizado" });
 
   const redirectUri = `${BASE_URL}/api/mp/connect/callback`;
-  const state = String(auth.user.barbershopId); // usado para identificar a barbearia no callback
+  const state = await createOAuthState(auth.user.barbershopId!, auth.user.id);
 
   const authUrl = new URL("https://auth.mercadopago.com/authorization");
   authUrl.searchParams.set("client_id", MP_CLIENT_ID);
@@ -96,10 +121,12 @@ mpConnectRouter.get("/connect/callback", async (req: Request, res: Response) => 
     return res.redirect("/configuracoes?mp_connect=error");
   }
 
-  const barbershopId = parseInt(state);
-  if (isNaN(barbershopId)) {
+  const stateData = await verifyOAuthState(state);
+  if (!stateData) {
+    console.error("[MPConnect] State inválido ou expirado");
     return res.redirect("/configuracoes?mp_connect=error");
   }
+  const barbershopId = stateData.barbershopId;
 
   const db = await getDb();
   if (!db) return res.redirect("/configuracoes?mp_connect=error");

@@ -115,29 +115,30 @@ export default function BookingPage() {
     executeBooking(method ?? "in_person");
   };
 
-  const executeBooking = (method: "in_person" | "mp" = "in_person") => {
+  const executeBooking = (method: "in_person" | "mp" = "in_person", forceGuestFlag?: boolean) => {
     if (!selectedBarber || selectedServices.length === 0 || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
     const hasSubscription = !!me?.subscription;
+    const effectiveIsGuest = forceGuestFlag !== undefined ? forceGuestFlag : isGuestBooking;
     bookMutation.mutate({
       slug,
       barberId: selectedBarber.id,
       serviceIds: selectedServices.map((s) => s.id),
       appointmentDate,
       notes: notes || undefined,
-      useSubscriptionCredit: hasSubscription && !isGuestBooking,
-      isGuestBooking,
-      guestName: isGuestBooking ? guestName : undefined,
-      paymentMethod: hasSubscription || isGuestBooking ? "in_person" : method,
+      useSubscriptionCredit: hasSubscription && !effectiveIsGuest,
+      isGuestBooking: effectiveIsGuest,
+      guestName: effectiveIsGuest ? guestName : undefined,
+      paymentMethod: hasSubscription || effectiveIsGuest ? "in_person" : method,
     });
   };
 
   const handleGuestDialogConfirm = (forGuest: boolean) => {
-    setIsGuestBooking(forGuest);
     if (forGuest && !guestName.trim()) return;
     setShowGuestDialog(false);
-    executeBooking("in_person");
+    setIsGuestBooking(forGuest);
+    executeBooking("in_person", forGuest);
   };
 
   const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
@@ -397,7 +398,7 @@ export default function BookingPage() {
                   border: `1.5px solid ${primaryColor}40`,
                 }}
               >
-                <p className="text-xs text-white/40 uppercase tracking-wider mb-1">Seu plano atual</p>
+                <p className="text-xs text-neutral uppercase tracking-wider mb-1">Seu plano atual</p>
                 <p className="font-bold text-white">{(me.subscription.plan as any)?.name}</p>
                 <p className="text-xs mt-1" style={{ color: `${primaryColor}cc` }}>
                   {isUnlimitedPlan
@@ -848,14 +849,14 @@ export default function BookingPage() {
                   className="rounded-xl p-3 text-sm"
                   style={{
                     background: isUnlimitedPlan || creditsRemaining > 0
-                      ? "rgba(34,197,94,0.08)"
-                      : "rgba(239,68,68,0.08)",
+                      ? "rgba(4, 65, 27, 0.08)"
+                      : "rgba(239, 68, 68, 0.08)",
                     border: `1px solid ${isUnlimitedPlan || creditsRemaining > 0
-                      ? "rgba(34,197,94,0.2)"
-                      : "rgba(239,68,68,0.2)"}`,
+                      ? "rgba(34, 197, 94, 0.2)"
+                      : "rgba(239, 68, 68, 0.2)"}`,
                     color: isUnlimitedPlan || creditsRemaining > 0
-                      ? "rgba(134,239,172,0.9)"
-                      : "rgba(252,165,165,0.9)",
+                      ? "rgba(0, 255, 92, 0.9)"
+                      : "rgba(252, 165, 165, 0.9)",
                   }}
                 >
                   {isUnlimitedPlan

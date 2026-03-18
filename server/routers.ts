@@ -20,7 +20,14 @@ import {
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
+
+/** Deriva a base URL do próprio request (funciona em prod/preview/local sem env var) */
+function getBaseUrl(req: { headers: Record<string, string | string[] | undefined>; protocol?: string }): string {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() ?? req.protocol ?? "http";
+  const host = (req.headers["x-forwarded-host"] as string) ?? req.headers["host"] as string ?? "localhost:3000";
+  return `${proto}://${host}`;
+}
 
 // Helper para extrair barbershopId do contexto do usuário autenticado
 async function getBarbershopId(userId: number): Promise<number> {
@@ -1252,8 +1259,8 @@ export const appRouter = router({
                 transaction_amount: input.priceInCents / 100,
                 currency_id: "BRL",
               },
-              back_url: `${BASE_URL}/`,
-              notification_url: `${BASE_URL}/api/mp/webhook`,
+              back_url: `${getBaseUrl(ctx.req)}/`,
+              notification_url: `${getBaseUrl(ctx.req)}/api/mp/webhook`,
             };
             const mpRes = await fetch("https://api.mercadopago.com/preapproval_plan", {
               method: "POST",

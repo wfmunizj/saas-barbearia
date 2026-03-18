@@ -40,6 +40,8 @@ export default function BookingPage() {
   const [isGuestBooking, setIsGuestBooking] = useState(false);
   const [guestName, setGuestName] = useState("");
 
+  const [showNoCreditsDialog, setShowNoCreditsDialog] = useState(false);
+
   const queryClient = useQueryClient();
 
   const { data: barbershop } = trpc.clientPortal.getBarbershop.useQuery({ slug });
@@ -107,7 +109,14 @@ export default function BookingPage() {
     return `${year}-${month}-${day}`;
   }).filter(Boolean) as string[];
 
+  const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
+
   const handleConfirmClick = (method?: "in_person" | "mp") => {
+    // Sem créditos e tem assinatura: oferece pagar fora do plano
+    if (me?.subscription && !isUnlimitedPlan && creditsRemaining <= 0 && !isGuestBooking && method === undefined) {
+      setShowNoCreditsDialog(true);
+      return;
+    }
     if (me?.subscription && !isGuestBooking && !showGuestDialog && method === undefined) {
       setShowGuestDialog(true);
       return;
@@ -115,22 +124,23 @@ export default function BookingPage() {
     executeBooking(method ?? "in_person");
   };
 
-  const executeBooking = (method: "in_person" | "mp" = "in_person", forceGuestFlag?: boolean) => {
+  const executeBooking = (method: "in_person" | "mp" = "in_person", forceGuestFlag?: boolean, forceUseCredit?: boolean) => {
     if (!selectedBarber || selectedServices.length === 0 || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
     const hasSubscription = !!me?.subscription;
     const effectiveIsGuest = forceGuestFlag !== undefined ? forceGuestFlag : isGuestBooking;
+    const effectiveUseCredit = forceUseCredit !== undefined ? forceUseCredit : (hasSubscription && !effectiveIsGuest);
     bookMutation.mutate({
       slug,
       barberId: selectedBarber.id,
       serviceIds: selectedServices.map((s) => s.id),
       appointmentDate,
       notes: notes || undefined,
-      useSubscriptionCredit: hasSubscription && !effectiveIsGuest,
+      useSubscriptionCredit: effectiveUseCredit,
       isGuestBooking: effectiveIsGuest,
       guestName: effectiveIsGuest ? guestName : undefined,
-      paymentMethod: hasSubscription || effectiveIsGuest ? "in_person" : method,
+      paymentMethod: effectiveUseCredit || effectiveIsGuest ? "in_person" : method,
     });
   };
 
@@ -141,7 +151,6 @@ export default function BookingPage() {
     executeBooking("in_person", forGuest);
   };
 
-  const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
   const currentStepIndex = STEPS.findIndex((s) => s.key === step);
 
   // ── Cream card style ──────────────────────────────────────────────────────
@@ -863,7 +872,7 @@ export default function BookingPage() {
                     ? "Plano ilimitado — sem débito de créditos"
                     : creditsRemaining > 0
                     ? `Será usado 1 crédito do seu plano (${creditsRemaining} disponíveis)`
-                    : "Sem créditos disponíveis. Aguarde a renovação mensal."}
+                    : "Créditos esgotados — você pode agendar fora do plano"}
                 </div>
               )}
 
@@ -950,10 +959,7 @@ export default function BookingPage() {
                 </button>
                 <button
                   onClick={() => handleConfirmClick()}
-                  disabled={
-                    isBooking ||
-                    (!isUnlimitedPlan && !!me?.subscription && creditsRemaining <= 0 && !isGuestBooking)
-                  }
+                  disabled={isBooking}
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                   style={{
                     backgroundColor: primaryColor,
@@ -986,6 +992,46 @@ export default function BookingPage() {
       </main>
 
       {/* ── Guest Dialog ──────────────────────────────────────────────────── */}
+      <Dialog
+        open={showNoCreditsDialog}
+        onOpenChange={(open) => { if (!open && !isBooking) setShowNoCreditsDialog(false); }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Créditos esgotados
+            </DialogTitle>
+            <DialogDescription>
+              Seus créditos do plano acabaram. Como quer pagar por este agendamento?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 py-2">
+            <button
+              disabled={isBooking}
+              className="p-3.5 rounded-xl text-sm font-semibold flex flex-col items-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={{ border: `1.5px solid ${primaryColor}50`, color: primaryColor, background: `${primaryColor}08` }}
+              onClick={() => { setShowNoCreditsDialog(false); executeBooking("in_person", undefined, false); }}
+            >
+              <Store className="h-5 w-5" />
+              Pagar na barbearia
+            </button>
+            <button
+              disabled={isBooking}
+              className="p-3.5 rounded-xl text-sm font-semibold flex flex-col items-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: primaryColor, color: secondaryColor, boxShadow: `0 4px 20px ${primaryColor}28` }}
+              onClick={() => { setShowNoCreditsDialog(false); executeBooking("mp", undefined, false); }}
+            >
+              {isBooking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
+              Pagar via Mercado Pago
+            </button>
+          </div>
+          <p className="text-xs text-center text-muted-foreground">
+            Valor: R$ {(totalPrice / 100).toFixed(2).replace(".", ",")}
+          </p>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={showGuestDialog}
         onOpenChange={(open) => { if (!open && !isBooking) setShowGuestDialog(false); }}

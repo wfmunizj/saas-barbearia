@@ -6,6 +6,7 @@
 
 import { Request, Response } from "express";
 import { createHash, randomBytes } from "crypto";
+import bcrypt from "bcrypt";
 import { getDb } from "./db";
 import { users, barbershops } from "../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
@@ -17,14 +18,11 @@ import { createVerificationToken, sendVerificationEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function hashPassword(password: string, salt: string): string {
+// ─── Legacy SHA-256 (backward compat, kept for verifying old hashes) ──────────
+function hashPasswordSHA256(password: string, salt: string): string {
   return createHash("sha256")
     .update(password + salt)
     .digest("hex");
-}
-
-function generateSalt(): string {
-  return randomBytes(16).toString("hex");
 }
 
 function generateSlug(name: string): string {
@@ -37,17 +35,21 @@ function generateSlug(name: string): string {
     .substring(0, 50);
 }
 
-// Armazena salt junto com o hash: "salt:hash"
-export function createPasswordHash(password: string): string {
-  const salt = generateSalt();
-  const hash = hashPassword(password, salt);
-  return `${salt}:${hash}`;
+const BCRYPT_ROUNDS = 12;
+
+export async function createPasswordHash(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
-export function verifyPassword(password: string, storedHash: string): boolean {
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  // bcrypt hashes start with $2b$ or $2a$
+  if (storedHash.startsWith("$2b$") || storedHash.startsWith("$2a$")) {
+    return bcrypt.compare(password, storedHash);
+  }
+  // Legacy SHA-256: format is "salt:hash"
   const [salt, hash] = storedHash.split(":");
   if (!salt || !hash) return false;
-  return hashPassword(password, salt) === hash;
+  return hashPasswordSHA256(password, salt) === hash;
 }
 
 // ─── Register Barbershop ──────────────────────────────────────────────────────
@@ -106,7 +108,7 @@ export async function registerBarbershop(req: Request, res: Response) {
       .returning();
 
     // Cria o usuário owner
-    const passwordHash = createPasswordHash(password);
+    const passwordHash = await createPasswordHash(password);
     const [user] = await db
       .insert(users)
       .values({
@@ -211,9 +213,20 @@ export async function loginWithEmail(req: Request, res: Response) {
         .json({ error: "Conta desativada. Entre em contato com o suporte." });
     }
 
-    const passwordValid = verifyPassword(password, user.passwordHash);
+    const passwordValid = await verifyPassword(password, user.passwordHash);
     if (!passwordValid) {
       return res.status(401).json({ error: "Email ou senha incorretos" });
+    }
+
+    // Upgrade legacy SHA-256 hash to bcrypt on successful login
+    if (!user.passwordHash.startsWith("$2b$") && !user.passwordHash.startsWith("$2a$")) {
+      try {
+        const newHash = await createPasswordHash(password);
+        await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
+      } catch (upgradeErr) {
+        console.error("[Auth] Falha ao atualizar hash:", upgradeErr);
+        // Non-fatal: login still succeeds even if upgrade fails
+      }
     }
 
     // Atualiza lastSignedIn

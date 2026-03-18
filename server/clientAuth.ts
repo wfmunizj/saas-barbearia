@@ -132,7 +132,7 @@ clientAuthRouter.post("/:slug/register", async (req: Request, res: Response) => 
       clientId = newClient.id;
     }
 
-    const passwordHash = createPasswordHash(password);
+    const passwordHash = await createPasswordHash(password);
     const [clientUser] = await db.insert(clientUsers).values({
       barbershopId: barbershop.id,
       clientId,
@@ -181,12 +181,23 @@ clientAuthRouter.post("/:slug/login", async (req: Request, res: Response) => {
       and(eq(clientUsers.email, email), eq(clientUsers.barbershopId, barbershop.id))
     ).limit(1);
 
-    if (!clientUser || !verifyPassword(password, clientUser.passwordHash)) {
+    const passwordValid = await verifyPassword(password, clientUser.passwordHash ?? "");
+    if (!clientUser || !passwordValid) {
       return res.status(401).json({ error: "Email ou senha incorretos" });
     }
 
     if (!clientUser.isActive) {
       return res.status(403).json({ error: "Conta desativada" });
+    }
+
+    // Upgrade legacy hash to bcrypt
+    if (clientUser.passwordHash && !clientUser.passwordHash.startsWith("$2b$") && !clientUser.passwordHash.startsWith("$2a$")) {
+      try {
+        const newHash = await createPasswordHash(password);
+        await db.update(clientUsers).set({ passwordHash: newHash }).where(eq(clientUsers.id, clientUser.id));
+      } catch (err) {
+        console.error("[ClientAuth] Falha ao atualizar hash:", err);
+      }
     }
 
     await db.update(clientUsers)

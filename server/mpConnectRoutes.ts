@@ -22,7 +22,14 @@ export const mpConnectRouter = Router();
 
 const MP_CLIENT_ID = process.env.MP_CLIENT_ID!;
 const MP_CLIENT_SECRET = process.env.MP_CLIENT_SECRET!;
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
+
+/** Deriva a base URL do próprio request (funciona em prod/preview/local sem env var) */
+function getBaseUrl(req: Request): string {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() ?? req.protocol ?? "http";
+  const host = (req.headers["x-forwarded-host"] as string) ?? req.headers.host ?? "localhost:3000";
+  return `${proto}://${host}`;
+}
 
 // ─── Helper: autentica owner ──────────────────────────────────────────────────
 async function getOwner(req: Request) {
@@ -73,7 +80,7 @@ mpConnectRouter.post("/connect/auth-url", async (req: Request, res: Response) =>
   const auth = await getOwner(req);
   if (!auth) return res.status(401).json({ error: "Não autorizado" });
 
-  const redirectUri = `${BASE_URL}/api/mp/connect/callback`;
+  const redirectUri = `${getBaseUrl(req)}/api/mp/connect/callback`;
   const state = String(auth.user.barbershopId); // usado para identificar a barbearia no callback
 
   const authUrl = new URL("https://auth.mercadopago.com/authorization");
@@ -104,7 +111,7 @@ mpConnectRouter.get("/connect/callback", async (req: Request, res: Response) => 
   const db = await getDb();
   if (!db) return res.redirect("/configuracoes?mp_connect=error");
 
-  const redirectUri = `${BASE_URL}/api/mp/connect/callback`;
+  const redirectUri = `${getBaseUrl(req)}/api/mp/connect/callback`;
 
   try {
     // Troca code por access_token

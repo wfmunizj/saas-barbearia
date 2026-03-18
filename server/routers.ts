@@ -628,11 +628,34 @@ export const appRouter = router({
           });
         }
 
-        return db.createAppointment({
+        const dbInstance = await import("./db").then(m => m.getDb());
+        if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        // Busca dados do serviço para criar appointmentServices
+        const [svc] = await dbInstance.select().from(services)
+          .where(and(eq(services.id, input.serviceId), eq(services.barbershopId, barbershopId)))
+          .limit(1);
+        if (!svc) throw new TRPCError({ code: "NOT_FOUND", message: "Serviço não encontrado." });
+
+        // Cria o agendamento (serviceId null, dados ficam em appointmentServices)
+        const appt = await db.createAppointment({
           ...input,
+          serviceId: null,
           barbershopId,
           appointmentDate,
         });
+
+        // Cria appointmentServices (igual ao fluxo do cliente)
+        await dbInstance.insert(appointmentServices).values({
+          appointmentId: appt.id,
+          serviceId: svc.id,
+          priceInCents: svc.priceInCents,
+          durationMinutes: svc.durationMinutes,
+          fichasCount: svc.fichasCount ?? 0,
+          fichaValueInCents: svc.fichaValueInCents ?? 0,
+        });
+
+        return appt;
       }),
 
     update: protectedProcedure
@@ -669,71 +692,87 @@ export const appRouter = router({
 
         // Auto-criar registro de comissão/fichas quando status muda para "completed"
         if (input.status === "completed") {
-          const dbInstance = await import("./db").then(m => m.getDb());
-          if (dbInstance) {
-            const [appt] = await dbInstance.select({
-              id: appointments.id,
-              barberId: appointments.barberId,
-              clientId: appointments.clientId,
-              commissionPercent: barbers.commissionPercent,
-              priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
-              // Duração total para calcular fichas (1 ficha por 15 min)
-              durationMinutes: sql<number>`COALESCE(SUM(${appointmentServices.durationMinutes}), MAX(${services.durationMinutes}), 30)`,
-              // Valor por ficha vem do serviço (snapshot em appointmentServices ou fallback para services)
-              fichaValueInCents: sql<number>`COALESCE(MAX(${appointmentServices.fichaValueInCents}), MAX(${services.fichaValueInCents}), 0)`,
-            })
-              .from(appointments)
-              .innerJoin(barbers, eq(appointments.barberId, barbers.id))
-              .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
-              .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
-              .where(and(eq(appointments.id, id), eq(appointments.barbershopId, barbershopId)))
-              .groupBy(appointments.id, barbers.id)
-              .limit(1);
-
-            if (appt) {
-              // Verificar se o cliente possui plano ilimitado ativo
-              const unlimitedSub = await dbInstance.select({ isUnlimited: plans.isUnlimited })
-                .from(subscriptions)
-                .innerJoin(clientUsers, eq(subscriptions.clientUserId, clientUsers.id))
-                .innerJoin(plans, eq(subscriptions.planId, plans.id))
-                .where(and(
-                  eq(clientUsers.clientId, appt.clientId),
-                  eq(clientUsers.barbershopId, barbershopId),
-                  eq(subscriptions.status, "active"),
-                  eq(plans.isUnlimited, true),
-                ))
+          try {
+            const dbInstance = await import("./db").then(m => m.getDb());
+            if (dbInstance) {
+              const [appt] = await dbInstance.select({
+                id: appointments.id,
+                barberId: appointments.barberId,
+                clientId: appointments.clientId,
+                commissionPercent: barbers.commissionPercent,
+                priceInCents: sql<number>`COALESCE(SUM(${appointmentServices.priceInCents}), MAX(${services.priceInCents}), 0)`,
+                durationMinutes: sql<number>`COALESCE(SUM(${appointmentServices.durationMinutes}), MAX(${services.durationMinutes}), 30)`,
+                fichaValueInCents: sql<number>`COALESCE(MAX(${appointmentServices.fichaValueInCents}), MAX(${services.fichaValueInCents}), 0)`,
+              })
+                .from(appointments)
+                .innerJoin(barbers, eq(appointments.barberId, barbers.id))
+                .leftJoin(appointmentServices, eq(appointmentServices.appointmentId, appointments.id))
+                .leftJoin(services, sql`${services.id} = COALESCE(${appointmentServices.serviceId}, ${appointments.serviceId})`)
+                .where(and(eq(appointments.id, id), eq(appointments.barbershopId, barbershopId)))
+                .groupBy(appointments.id, barbers.id)
                 .limit(1);
 
-              const isUnlimitedPlan = unlimitedSub.length > 0;
+              console.log("[Commission] Appointment data for commission:", appt ? {
+                id: appt.id, barberId: appt.barberId, clientId: appt.clientId,
+                commissionPercent: appt.commissionPercent, priceInCents: appt.priceInCents,
+                durationMinutes: appt.durationMinutes, fichaValueInCents: appt.fichaValueInCents,
+              } : "NOT FOUND");
 
-              if (isUnlimitedPlan) {
-                // Plano ilimitado: fichas calculadas por tempo (1 ficha por 15 min)
-                const durationMin = Number(appt.durationMinutes ?? 30);
-                const fichasCount = Math.ceil(durationMin / 15);
-                const fichaValueInCents = Number(appt.fichaValueInCents ?? 0);
-                const totalValueInCents = fichasCount * fichaValueInCents;
-                await dbInstance.insert(barberFichaRecords).values({
-                  barbershopId,
-                  barberId: appt.barberId,
-                  appointmentId: appt.id,
-                  fichasCount,
-                  fichaValueInCents,
-                  totalValueInCents,
-                }).onConflictDoNothing();
-              } else {
-                // Plano créditos / avulso: criar registro de comissão
-                const commissionPct = parseFloat(appt.commissionPercent ?? "0");
-                const commissionAmountInCents = Math.floor((appt.priceInCents ?? 0) * commissionPct / 100);
-                await dbInstance.insert(barberCommissionRecords).values({
-                  barbershopId,
-                  barberId: appt.barberId,
-                  appointmentId: appt.id,
-                  commissionPercent: String(commissionPct),
-                  serviceAmountInCents: appt.priceInCents ?? 0,
-                  commissionAmountInCents,
-                }).onConflictDoNothing();
+              if (appt) {
+                // Verificar se o cliente possui plano ilimitado ativo
+                let isUnlimitedPlan = false;
+                if (appt.clientId) {
+                  const unlimitedSub = await dbInstance.select({ isUnlimited: plans.isUnlimited })
+                    .from(subscriptions)
+                    .innerJoin(clientUsers, eq(subscriptions.clientUserId, clientUsers.id))
+                    .innerJoin(plans, eq(subscriptions.planId, plans.id))
+                    .where(and(
+                      eq(clientUsers.clientId, appt.clientId),
+                      eq(clientUsers.barbershopId, barbershopId),
+                      eq(subscriptions.status, "active"),
+                      eq(plans.isUnlimited, true),
+                    ))
+                    .limit(1);
+                  isUnlimitedPlan = unlimitedSub.length > 0;
+                }
+
+                console.log("[Commission] isUnlimitedPlan:", isUnlimitedPlan);
+
+                if (isUnlimitedPlan) {
+                  const durationMin = Number(appt.durationMinutes ?? 30);
+                  const fichasCount = Math.ceil(durationMin / 15);
+                  const fichaValueInCents = Number(appt.fichaValueInCents ?? 0);
+                  const totalValueInCents = fichasCount * fichaValueInCents;
+                  console.log("[Commission] Creating ficha record:", { fichasCount, fichaValueInCents, totalValueInCents });
+                  await dbInstance.insert(barberFichaRecords).values({
+                    barbershopId,
+                    barberId: appt.barberId,
+                    appointmentId: appt.id,
+                    fichasCount,
+                    fichaValueInCents,
+                    totalValueInCents,
+                  }).onConflictDoNothing();
+                } else {
+                  const commissionPct = parseFloat(appt.commissionPercent ?? "0");
+                  const commissionAmountInCents = Math.floor(Number(appt.priceInCents ?? 0) * commissionPct / 100);
+                  console.log("[Commission] Creating commission record:", {
+                    barberId: appt.barberId, appointmentId: appt.id,
+                    commissionPct, priceInCents: appt.priceInCents, commissionAmountInCents,
+                  });
+                  const insertResult = await dbInstance.insert(barberCommissionRecords).values({
+                    barbershopId,
+                    barberId: appt.barberId,
+                    appointmentId: appt.id,
+                    commissionPercent: String(commissionPct),
+                    serviceAmountInCents: Number(appt.priceInCents ?? 0),
+                    commissionAmountInCents,
+                  }).onConflictDoNothing().returning();
+                  console.log("[Commission] Insert result:", insertResult.length > 0 ? "CREATED" : "SKIPPED (conflict)");
+                }
               }
             }
+          } catch (err) {
+            console.error("[Commission] Error creating commission/ficha record:", err);
           }
         }
 

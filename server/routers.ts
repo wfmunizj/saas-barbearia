@@ -64,7 +64,18 @@ export const appRouter = router({
       if (user.role === "barber") {
         barberId = await getLinkedBarberId(user.id);
       }
-      return { ...user, barbershop, barberId };
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        barbershopId: user.barbershopId,
+        isActive: user.isActive,
+        emailVerified: user.emailVerified,
+        lastSignedIn: user.lastSignedIn,
+        barbershop,
+        barberId,
+      };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);

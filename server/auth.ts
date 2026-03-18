@@ -261,9 +261,7 @@ export async function loginWithEmail(req: Request, res: Response) {
       barbershop,
     });
   } catch (error) {
-    console.error("[Auth] Login error FULL:", JSON.stringify(error, null, 2));
-    console.error("[Auth] Login error message:", (error as any)?.message);
-    console.error("[Auth] Login error stack:", (error as any)?.stack);
+    console.error("[Auth] Login error:", (error as any)?.message ?? error);
     return res.status(500).json({ error: "Erro interno ao fazer login" });
   }
 }

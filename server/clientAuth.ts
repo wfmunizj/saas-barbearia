@@ -15,9 +15,11 @@ import { ONE_YEAR_MS } from "@shared/const";
 export const CLIENT_COOKIE_NAME = "client_session_id";
 
 // Usa o COOKIE_SECRET do ambiente, mas assina com propósito diferente
+if (!process.env.COOKIE_SECRET) throw new Error("COOKIE_SECRET env var is required");
+const _cookieSecret = process.env.COOKIE_SECRET;
+
 function getSecret() {
-  const secret = process.env.COOKIE_SECRET ?? "client-portal-secret-fallback";
-  return new TextEncoder().encode(secret + "-client");
+  return new TextEncoder().encode(_cookieSecret + "-client");
 }
 
 // ─── JWT próprio para clientes (independente do sdk) ─────────────────────────

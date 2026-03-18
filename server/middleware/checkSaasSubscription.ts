@@ -52,8 +52,10 @@ export async function checkSaasSubscription(
 
   const db = await getDb();
   if (!db) {
-    // Fail open — não bloqueia se banco estiver indisponível
-    return next();
+    return res.status(503).json({
+      error: "service_unavailable",
+      message: "Serviço temporariamente indisponível. Tente novamente em instantes.",
+    });
   }
 
   const result = await db.execute(sql`

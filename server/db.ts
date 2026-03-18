@@ -239,29 +239,31 @@ export async function deleteBarber(id: number, barbershopId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // 1. Busca os IDs dos agendamentos desse barbeiro
-  const barberAppointments = await db
-    .select({ id: appointments.id })
-    .from(appointments)
-    .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
+  await db.transaction(async (tx) => {
+    // 1. Busca os IDs dos agendamentos desse barbeiro
+    const barberAppointments = await tx
+      .select({ id: appointments.id })
+      .from(appointments)
+      .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
 
-  // 2. Remove os pagamentos vinculados a esses agendamentos
-  for (const appointment of barberAppointments) {
-    await db.delete(payments)
-      .where(eq(payments.appointmentId, appointment.id));
-  }
+    // 2. Remove os pagamentos vinculados a esses agendamentos
+    for (const appointment of barberAppointments) {
+      await tx.delete(payments)
+        .where(eq(payments.appointmentId, appointment.id));
+    }
 
-  // 3. Remove os agendamentos
-  await db.delete(appointments)
-    .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
+    // 3. Remove os agendamentos
+    await tx.delete(appointments)
+      .where(and(eq(appointments.barberId, id), eq(appointments.barbershopId, barbershopId)));
 
-  // 4. Remove os horários
-  await db.delete(barberSchedules)
-    .where(and(eq(barberSchedules.barberId, id), eq(barberSchedules.barbershopId, barbershopId)));
+    // 4. Remove os horários
+    await tx.delete(barberSchedules)
+      .where(and(eq(barberSchedules.barberId, id), eq(barberSchedules.barbershopId, barbershopId)));
 
-  // 5. Remove o barbeiro
-  await db.delete(barbers)
-    .where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)));
+    // 5. Remove o barbeiro
+    await tx.delete(barbers)
+      .where(and(eq(barbers.id, id), eq(barbers.barbershopId, barbershopId)));
+  });
 }
 
 // ─── Barber Schedules ─────────────────────────────────────────────────────────

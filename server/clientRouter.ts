@@ -120,6 +120,18 @@ export const clientPortalRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
+      const [barbershop] = await db.select({ id: barbershops.id })
+        .from(barbershops).where(eq(barbershops.slug, input.slug)).limit(1);
+      if (!barbershop) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Valida que o barbeiro pertence à barbearia
+      const [barberRecord] = await db
+        .select({ id: barbers.id })
+        .from(barbers)
+        .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershop.id), eq(barbers.isActive, true)))
+        .limit(1);
+      if (!barberRecord) throw new TRPCError({ code: "NOT_FOUND", message: "Barbeiro não encontrado" });
+
       const startOfDay = new Date(`${input.date}T00:00:00-03:00`);
       const endOfDay   = new Date(`${input.date}T23:59:59-03:00`);
 
@@ -128,8 +140,9 @@ export const clientPortalRouter = router({
         .where(
           and(
             eq(appointments.barberId, input.barberId),
+            eq(appointments.barbershopId, barbershop.id),
             gte(appointments.appointmentDate, startOfDay),
-            lte(appointments.appointmentDate, endOfDay), 
+            lte(appointments.appointmentDate, endOfDay),
           )
         );
 
@@ -241,6 +254,16 @@ export const clientPortalRouter = router({
           code: "BAD_REQUEST",
           message: "Informe o nome da pessoa para quem está agendando.",
         });
+      }
+
+      // Valida que o barbeiro pertence à barbearia
+      const [barberRecord] = await db
+        .select({ id: barbers.id })
+        .from(barbers)
+        .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershop.id), eq(barbers.isActive, true)))
+        .limit(1);
+      if (!barberRecord) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Barbeiro inválido" });
       }
 
       // Busca todos os serviços selecionados e calcula totais
@@ -695,7 +718,7 @@ export const clientPortalRouter = router({
       // Cancela no MP se tiver ID de assinatura recorrente
       if (sub.mpSubscriptionId) {
         const accessToken = MP_ACCESS_TOKEN;
-        await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
+        const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -703,6 +726,14 @@ export const clientPortalRouter = router({
           },
           body: JSON.stringify({ status: "cancelled" }),
         });
+        if (!mpRes.ok) {
+          const errText = await mpRes.text();
+          console.error("[ClientRouter] Erro ao cancelar assinatura no MP:", errText);
+          if (mpRes.status >= 500) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao cancelar no Mercado Pago" });
+          }
+          // For 4xx (already cancelled), continue with local cancellation
+        }
       }
 
       await db.update(subscriptions).set({

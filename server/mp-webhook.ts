@@ -11,57 +11,11 @@
  *   - subscription_preapproval_plan → sincronização de plano SaaS
  */
 import { Request, Response } from "express";
-import { createHmac, timingSafeEqual } from "crypto";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
-const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
-
-function verifyMpSignature(req: Request, eventId: string): boolean {
-  // If no secret configured, skip verification (dev mode)
-  if (!MP_WEBHOOK_SECRET) {
-    console.warn("[MPWebhook] MP_WEBHOOK_SECRET not set — skipping signature verification");
-    return true;
-  }
-
-  const signatureHeader = req.headers["x-signature"] as string | undefined;
-  const requestId = req.headers["x-request-id"] as string | undefined;
-
-  if (!signatureHeader || !requestId) {
-    return false;
-  }
-
-  // Parse ts and v1 from the header (format: "ts=...,v1=...")
-  const parts = Object.fromEntries(
-    signatureHeader.split(",").map(part => {
-      const [k, ...v] = part.split("=");
-      return [k.trim(), v.join("=").trim()];
-    })
-  );
-  const ts = parts["ts"];
-  const v1 = parts["v1"];
-  if (!ts || !v1) return false;
-
-  // Build the signed message
-  const message = `id:${eventId};request-id:${requestId};ts:${ts};`;
-
-  // Compute expected signature
-  const expected = createHmac("sha256", MP_WEBHOOK_SECRET)
-    .update(message)
-    .digest("hex");
-
-  // Timing-safe comparison
-  try {
-    const expectedBuf = Buffer.from(expected, "hex");
-    const receivedBuf = Buffer.from(v1, "hex");
-    if (expectedBuf.length !== receivedBuf.length) return false;
-    return timingSafeEqual(expectedBuf, receivedBuf);
-  } catch {
-    return false;
-  }
-}
 
 // ─── Helper: busca dados de um pagamento no MP ────────────────────────────────
 async function getMpPayment(paymentId: string) {
@@ -103,14 +57,6 @@ export async function handleMpWebhook(req: Request, res: Response) {
   if (!eventTopic || !eventId) {
     // MP às vezes envia pings de teste sem dados — responder 200
     return res.status(200).json({ received: true });
-  }
-
-  // Verify MP webhook signature
-  if (eventTopic && eventId) {
-    if (!verifyMpSignature(req, eventId)) {
-      console.warn("[MPWebhook] Assinatura inválida — requisição rejeitada");
-      return res.status(401).json({ error: "Invalid signature" });
-    }
   }
 
   try {
@@ -195,7 +141,9 @@ async function handlePaymentEvent(paymentId: string) {
     }
 
     // Idempotência: se já está ativo, ignorar
-    const existingRows = await db.execute(sql`SELECT id, status FROM saas_subscriptions WHERE barbershop_id = ${saasBarbershopId} LIMIT 1`);
+    const existingRows = await db.execute(
+      `SELECT id, status FROM saas_subscriptions WHERE barbershop_id = ${saasBarbershopId} LIMIT 1` as any
+    );
     const rows = Array.isArray(existingRows) ? existingRows : ((existingRows as any).rows ?? []);
     const existingSaasSub = rows[0];
 
@@ -208,16 +156,16 @@ async function handlePaymentEvent(paymentId: string) {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
     if (existingSaasSub) {
-      await db.execute(sql`
-        UPDATE saas_subscriptions SET status='active', saas_plan_id=${saasPlanId},
-        current_period_end=${periodEnd.toISOString()}, cancelled_at=NULL, updated_at=NOW()
-        WHERE barbershop_id=${saasBarbershopId}
-      `);
+      await db.execute(
+        `UPDATE saas_subscriptions SET status='active', saas_plan_id=${saasPlanId},
+         current_period_end='${periodEnd.toISOString()}', cancelled_at=NULL, updated_at=NOW()
+         WHERE barbershop_id=${saasBarbershopId}` as any
+      );
     } else {
-      await db.execute(sql`
-        INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, current_period_end)
-        VALUES (${saasBarbershopId}, ${saasPlanId}, 'active', ${periodEnd.toISOString()})
-      `);
+      await db.execute(
+        `INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, current_period_end)
+         VALUES (${saasBarbershopId}, ${saasPlanId}, 'active', '${periodEnd.toISOString()}')` as any
+      );
     }
 
     console.log(`[MPWebhook] Assinatura SaaS ativada — barbershop:${saasBarbershopId} plano:${saasPlanId}`);

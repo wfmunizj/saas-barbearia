@@ -43,27 +43,3 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
-
-export const ownerProcedure = t.procedure.use(
-  t.middleware(async opts => {
-    const { ctx, next } = opts;
-
-    if (!ctx.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
-    }
-
-    if (!["owner", "admin"].includes(ctx.user.role)) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Apenas proprietários podem realizar esta ação"
-      });
-    }
-
-    return next({
-      ctx: {
-        ...ctx,
-        user: ctx.user,
-      },
-    });
-  }),
-);

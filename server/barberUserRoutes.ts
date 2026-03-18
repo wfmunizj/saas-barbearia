@@ -79,7 +79,7 @@ barberUserRouter.post("/create", async (req: Request, res: Response) => {
     if (existingUser) return res.status(409).json({ error: "Este email já está em uso" });
 
     // Cria o usuário com role "barber"
-    const passwordHash = await createPasswordHash(password);
+    const passwordHash = createPasswordHash(password);
     const [newUser] = await db
       .insert(users)
       .values({

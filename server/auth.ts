@@ -6,10 +6,9 @@
 
 import { Request, Response } from "express";
 import { createHash, randomBytes } from "crypto";
-import bcrypt from "bcrypt";
 import { getDb } from "./db";
 import { users, barbershops } from "../drizzle/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { COOKIE_NAME } from "@shared/const";
@@ -18,11 +17,14 @@ import { createVerificationToken, sendVerificationEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ─── Legacy SHA-256 (backward compat, kept for verifying old hashes) ──────────
-function hashPasswordSHA256(password: string, salt: string): string {
+function hashPassword(password: string, salt: string): string {
   return createHash("sha256")
     .update(password + salt)
     .digest("hex");
+}
+
+function generateSalt(): string {
+  return randomBytes(16).toString("hex");
 }
 
 function generateSlug(name: string): string {
@@ -35,21 +37,17 @@ function generateSlug(name: string): string {
     .substring(0, 50);
 }
 
-const BCRYPT_ROUNDS = 12;
-
-export async function createPasswordHash(password: string): Promise<string> {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
+// Armazena salt junto com o hash: "salt:hash"
+export function createPasswordHash(password: string): string {
+  const salt = generateSalt();
+  const hash = hashPassword(password, salt);
+  return `${salt}:${hash}`;
 }
 
-export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  // bcrypt hashes start with $2b$ or $2a$
-  if (storedHash.startsWith("$2b$") || storedHash.startsWith("$2a$")) {
-    return bcrypt.compare(password, storedHash);
-  }
-  // Legacy SHA-256: format is "salt:hash"
+export function verifyPassword(password: string, storedHash: string): boolean {
   const [salt, hash] = storedHash.split(":");
   if (!salt || !hash) return false;
-  return hashPasswordSHA256(password, salt) === hash;
+  return hashPassword(password, salt) === hash;
 }
 
 // ─── Register Barbershop ──────────────────────────────────────────────────────
@@ -108,7 +106,7 @@ export async function registerBarbershop(req: Request, res: Response) {
       .returning();
 
     // Cria o usuário owner
-    const passwordHash = await createPasswordHash(password);
+    const passwordHash = createPasswordHash(password);
     const [user] = await db
       .insert(users)
       .values({
@@ -138,7 +136,9 @@ export async function registerBarbershop(req: Request, res: Response) {
 
     // ─── Inicia trial automático de 7 dias ───────────────────────────────────────
     try {
-      const trialResult = await db.execute(sql`SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1`);
+      const trialResult = await db.execute(
+        "SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1" as any
+      );
       // postgres-js retorna array direto, sem .rows
       const trialPlan =
         (Array.isArray(trialResult)
@@ -148,10 +148,15 @@ export async function registerBarbershop(req: Request, res: Response) {
       if (trialPlan) {
         const trialEndsAt = new Date();
         trialEndsAt.setDate(trialEndsAt.getDate() + 7);
-        await db.execute(sql`
-          INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at)
-          VALUES (${barbershop.id}, ${trialPlan.id}, 'trialing', ${trialEndsAt.toISOString()})
-        `);
+        await db.execute(
+          ("INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at) VALUES (" +
+            barbershop.id +
+            ", " +
+            trialPlan.id +
+            ", 'trialing', '" +
+            trialEndsAt.toISOString() +
+            "')") as any
+        );
         console.log(
           "[Auth] Trial de 7 dias iniciado para barbearia:",
           barbershop.id
@@ -213,20 +218,9 @@ export async function loginWithEmail(req: Request, res: Response) {
         .json({ error: "Conta desativada. Entre em contato com o suporte." });
     }
 
-    const passwordValid = await verifyPassword(password, user.passwordHash);
+    const passwordValid = verifyPassword(password, user.passwordHash);
     if (!passwordValid) {
       return res.status(401).json({ error: "Email ou senha incorretos" });
-    }
-
-    // Upgrade legacy SHA-256 hash to bcrypt on successful login
-    if (!user.passwordHash.startsWith("$2b$") && !user.passwordHash.startsWith("$2a$")) {
-      try {
-        const newHash = await createPasswordHash(password);
-        await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
-      } catch (upgradeErr) {
-        console.error("[Auth] Falha ao atualizar hash:", upgradeErr);
-        // Non-fatal: login still succeeds even if upgrade fails
-      }
     }
 
     // Atualiza lastSignedIn
@@ -267,7 +261,9 @@ export async function loginWithEmail(req: Request, res: Response) {
       barbershop,
     });
   } catch (error) {
-    console.error("[Auth] Login error:", (error as any)?.message ?? error);
+    console.error("[Auth] Login error FULL:", JSON.stringify(error, null, 2));
+    console.error("[Auth] Login error message:", (error as any)?.message);
+    console.error("[Auth] Login error stack:", (error as any)?.stack);
     return res.status(500).json({ error: "Erro interno ao fazer login" });
   }
 }

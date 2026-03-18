@@ -9,7 +9,7 @@
 import { Router, Request, Response } from "express";
 import { getDb } from "./db";
 import { users, barbershops } from "../drizzle/schema";
-import { eq, sql, SQL } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 
@@ -41,8 +41,8 @@ async function getOwner(req: Request) {
   return user;
 }
 
-async function rawSql(db: any, query: SQL): Promise<any[]> {
-  const r = await db.execute(query);
+async function rawSql(db: any, query: string): Promise<any[]> {
+  const r = await db.execute(query as any);
   return Array.isArray(r) ? r : (r.rows ?? []);
 }
 
@@ -50,7 +50,10 @@ async function rawSql(db: any, query: SQL): Promise<any[]> {
 mpSaasRouter.get("/plans", async (_req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
-  const plans = await rawSql(db, sql`SELECT id, name, description, price_in_cents, max_barbers, sort_order FROM saas_plans WHERE is_active = true ORDER BY sort_order ASC`);
+  const plans = await rawSql(db,
+    "SELECT id, name, description, price_in_cents, max_barbers, sort_order " +
+    "FROM saas_plans WHERE is_active = true ORDER BY sort_order ASC"
+  );
   return res.json({ plans });
 });
 
@@ -61,23 +64,25 @@ mpSaasRouter.get("/subscription", async (req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  const rows = await rawSql(db, sql`
-    SELECT ss.*, sp.name as plan_name, sp.max_barbers, sp.max_barbershops, sp.price_in_cents
-    FROM saas_subscriptions ss
-    JOIN saas_plans sp ON sp.id = ss.saas_plan_id
-    WHERE ss.barbershop_id IN (
-      SELECT id FROM barbershops WHERE owner_id = ${owner.id}
-    )
-    ORDER BY CASE WHEN ss.status = 'active' THEN 0 WHEN ss.status = 'trialing' THEN 1 ELSE 2 END ASC,
-    ss.created_at DESC LIMIT 1
-  `);
+  const rows = await rawSql(db,
+    "SELECT ss.*, sp.name as plan_name, sp.max_barbers, sp.max_barbershops, sp.price_in_cents " +
+    "FROM saas_subscriptions ss " +
+    "JOIN saas_plans sp ON sp.id = ss.saas_plan_id " +
+    "WHERE ss.barbershop_id IN (" +
+    "  SELECT id FROM barbershops WHERE owner_id = " + owner.id +
+    ") " +
+    "ORDER BY CASE WHEN ss.status = 'active' THEN 0 WHEN ss.status = 'trialing' THEN 1 ELSE 2 END ASC, " +
+    "ss.created_at DESC LIMIT 1"
+  );
   const sub = rows[0] ?? null;
   if (!sub) return res.json({ subscription: null, canUse: false, daysLeftTrial: null });
 
   // Verifica expiração do trial
   if (sub.status === "trialing" && sub.trial_ends_at) {
     if (new Date(sub.trial_ends_at) < new Date()) {
-      await rawSql(db, sql`UPDATE saas_subscriptions SET status='expired', updated_at=NOW() WHERE id=${sub.id}`);
+      await rawSql(db,
+        "UPDATE saas_subscriptions SET status='expired', updated_at=NOW() WHERE id=" + sub.id
+      );
       sub.status = "expired";
     }
   }
@@ -98,17 +103,24 @@ mpSaasRouter.post("/start-trial", async (req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  const existing = await rawSql(db, sql`SELECT id FROM saas_subscriptions WHERE barbershop_id = ${owner.barbershopId} LIMIT 1`);
+  const existing = await rawSql(db,
+    "SELECT id FROM saas_subscriptions WHERE barbershop_id = " + owner.barbershopId + " LIMIT 1"
+  );
   if (existing.length > 0) return res.status(409).json({ error: "Já possui assinatura" });
 
-  const plans = await rawSql(db, sql`SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1`);
+  const plans = await rawSql(db,
+    "SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1"
+  );
   const plan = plans[0];
   if (!plan) return res.status(500).json({ error: "Plano padrão não encontrado" });
 
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
 
-  await rawSql(db, sql`INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at) VALUES (${owner.barbershopId}, ${plan.id}, 'trialing', ${trialEndsAt.toISOString()})`);
+  await rawSql(db,
+    "INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at) VALUES (" +
+    owner.barbershopId + ", " + plan.id + ", 'trialing', '" + trialEndsAt.toISOString() + "')"
+  );
 
   return res.json({ success: true, trialEndsAt, trialDays: TRIAL_DAYS });
 });
@@ -120,12 +132,12 @@ mpSaasRouter.post("/checkout", async (req: Request, res: Response) => {
   if (!owner) return res.status(401).json({ error: "Não autorizado" });
   const { planId } = req.body;
   if (!planId) return res.status(400).json({ error: "planId obrigatório" });
-  const planIdInt = parseInt(String(planId));
-  if (isNaN(planIdInt)) return res.status(400).json({ error: "planId inválido" });
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  const plans = await rawSql(db, sql`SELECT * FROM saas_plans WHERE id = ${planIdInt} AND is_active = true LIMIT 1`);
+  const plans = await rawSql(db,
+    "SELECT * FROM saas_plans WHERE id = " + planId + " AND is_active = true LIMIT 1"
+  );
   const plan = plans[0];
   if (!plan) return res.status(404).json({ error: "Plano não encontrado" });
 
@@ -194,7 +206,10 @@ mpSaasRouter.post("/cancel", async (req: Request, res: Response) => {
   const db = await getDb();
   if (!db) return res.status(500).json({ error: "Banco indisponível" });
 
-  await rawSql(db, sql`UPDATE saas_subscriptions SET status='cancelled', cancelled_at=NOW(), updated_at=NOW() WHERE barbershop_id=${owner.barbershopId} AND status IN ('active','trialing')`);
+  await rawSql(db,
+    "UPDATE saas_subscriptions SET status='cancelled', cancelled_at=NOW(), updated_at=NOW() " +
+    "WHERE barbershop_id=" + owner.barbershopId + " AND status IN ('active','trialing')"
+  );
 
   return res.json({ success: true });
 });

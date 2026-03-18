@@ -35,9 +35,7 @@ class ErrorBoundary extends Component<Props, State> {
 
             <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
               <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {import.meta.env.DEV
-                  ? this.state.error?.stack
-                  : "Ocorreu um erro inesperado. Por favor, recarregue a página."}
+                {this.state.error?.stack}
               </pre>
             </div>
 

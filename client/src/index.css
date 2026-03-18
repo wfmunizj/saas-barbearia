@@ -78,13 +78,13 @@
   --sidebar-ring: oklch(0.623 0.214 259.815);
 
   /* Portal Creme Theme */
-  --portal-bg: #FBF8F3;
-  --portal-card: #FFFFFF;
-  --portal-card-hover: #F5F0E8;
-  --portal-border: #E8DFD0;
-  --portal-text: #2D2418;
-  --portal-text-secondary: #8B7355;
-  --portal-text-muted: #B8A88A;
+  --portal-bg: #F5F0E8;
+  --portal-card: #FFFBF7;
+  --portal-card-hover: #F8F3ED;
+  --portal-border: #C9B8A6;
+  --portal-text: #0D0803;
+  --portal-text-secondary: #5C4A38;
+  --portal-text-muted: #8B7968;
   --portal-shadow: 0 2px 8px rgba(0,0,0,0.08);
   --portal-shadow-md: 0 4px 16px rgba(0,0,0,0.12);
   --portal-card-selected-border: 2px;

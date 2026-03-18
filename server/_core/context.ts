@@ -25,13 +25,20 @@ export async function createContext(
     );
     const sessionToken = cookies[COOKIE_NAME];
 
+    console.log("[Context] COOKIE_NAME:", COOKIE_NAME);
+    console.log("[Context] cookies found:", Object.keys(cookies));
+    console.log("[Context] sessionToken exists:", !!sessionToken);
+
     if (sessionToken) {
       const session = await sdk.verifySession(sessionToken);
+      console.log("[Context] session result:", session);
 
       if (session?.openId) {
         const userId = parseInt(session.openId);
+        console.log("[Context] userId parsed:", userId);
         if (!isNaN(userId)) {
           user = await getUserById(userId) ?? null;
+          console.log("[Context] user found:", user?.email, "role:", user?.role);
         }
       }
     }

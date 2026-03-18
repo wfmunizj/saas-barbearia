@@ -13,7 +13,7 @@ import {
   appointments, clients, barbers, services,
   barberCommissionRecords, appointmentServices,
 } from "../drizzle/schema";
-import { eq, and, gte, lte, inArray, sql, ne, gt } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
@@ -120,18 +120,6 @@ export const clientPortalRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const [barbershop] = await db.select({ id: barbershops.id })
-        .from(barbershops).where(eq(barbershops.slug, input.slug)).limit(1);
-      if (!barbershop) throw new TRPCError({ code: "NOT_FOUND" });
-
-      // Valida que o barbeiro pertence à barbearia
-      const [barberRecord] = await db
-        .select({ id: barbers.id })
-        .from(barbers)
-        .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershop.id), eq(barbers.isActive, true)))
-        .limit(1);
-      if (!barberRecord) throw new TRPCError({ code: "NOT_FOUND", message: "Barbeiro não encontrado" });
-
       const startOfDay = new Date(`${input.date}T00:00:00-03:00`);
       const endOfDay   = new Date(`${input.date}T23:59:59-03:00`);
 
@@ -140,9 +128,8 @@ export const clientPortalRouter = router({
         .where(
           and(
             eq(appointments.barberId, input.barberId),
-            eq(appointments.barbershopId, barbershop.id),
             gte(appointments.appointmentDate, startOfDay),
-            lte(appointments.appointmentDate, endOfDay),
+            lte(appointments.appointmentDate, endOfDay), 
           )
         );
 
@@ -256,16 +243,6 @@ export const clientPortalRouter = router({
         });
       }
 
-      // Valida que o barbeiro pertence à barbearia
-      const [barberRecord] = await db
-        .select({ id: barbers.id })
-        .from(barbers)
-        .where(and(eq(barbers.id, input.barberId), eq(barbers.barbershopId, barbershop.id), eq(barbers.isActive, true)))
-        .limit(1);
-      if (!barberRecord) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Barbeiro inválido" });
-      }
-
       // Busca todos os serviços selecionados e calcula totais
       const selectedServices = await db
         .select({ id: services.id, name: services.name, priceInCents: services.priceInCents, durationMinutes: services.durationMinutes, fichasCount: services.fichasCount, fichaValueInCents: services.fichaValueInCents })
@@ -280,7 +257,7 @@ export const clientPortalRouter = router({
 
       // ── Agendamento com crédito de assinatura ─────────────────────────────
       if (input.useSubscriptionCredit && !input.isGuestBooking) {
-        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId, primaryBarberId: subscriptions.primaryBarberId, currentPeriodStart: subscriptions.currentPeriodStart, currentPeriodEnd: subscriptions.currentPeriodEnd })
+        const [sub] = await db.select({ id: subscriptions.id, creditsRemaining: subscriptions.creditsRemaining, planId: subscriptions.planId, primaryBarberId: subscriptions.primaryBarberId })
           .from(subscriptions).where(
             and(
               eq(subscriptions.clientUserId, clientUser.id),
@@ -298,7 +275,6 @@ export const clientPortalRouter = router({
         // Busca plano para verificar se é ilimitado e dias permitidos
         const [plan] = await db.select({
           isUnlimited: plans.isUnlimited,
-          creditsPerMonth: plans.creditsPerMonth,
           creditsRemaining: subscriptions.creditsRemaining,
           allowedDaysOfWeek: plans.allowedDaysOfWeek,
         })
@@ -306,22 +282,6 @@ export const clientPortalRouter = router({
           .innerJoin(subscriptions, eq(subscriptions.planId, plans.id))
           .where(eq(subscriptions.id, sub.id))
           .limit(1);
-
-        // Conta agendamentos reais não cancelados no período corrente para evitar cycling via cancel+rebook
-        const [periodCountRow] = await db
-          .select({ count: sql<number>`cast(count(*) as int)` })
-          .from(appointments)
-          .innerJoin(clientUsers, eq(clientUsers.clientId, appointments.clientId))
-          .where(
-            and(
-              eq(clientUsers.id, clientUser.id),
-              eq(appointments.isGuestBooking, false),
-              ne(appointments.status, "cancelled"),
-              sub.currentPeriodStart ? gte(appointments.appointmentDate, sub.currentPeriodStart) : undefined,
-              sub.currentPeriodEnd ? lte(appointments.appointmentDate, sub.currentPeriodEnd) : undefined,
-            )
-          );
-        const periodCount = periodCountRow?.count ?? 0;
 
         // Verificação de dias permitidos
         if (plan?.allowedDaysOfWeek) {
@@ -338,14 +298,6 @@ export const clientPortalRouter = router({
         }
 
         // Verificação de créditos (somente planos não-ilimitados)
-        // Verificação primária: conta agendamentos reais no período (impede cycling via cancel+rebook)
-        if (!plan?.isUnlimited && plan?.creditsPerMonth != null && periodCount >= plan.creditsPerMonth) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Limite de agendamentos do plano atingido para este período. Aguarde a renovação mensal.",
-          });
-        }
-        // Verificação secundária: fallback por créditos restantes
         if (!plan?.isUnlimited && sub.creditsRemaining <= 0) {
           throw new TRPCError({
             code: "FORBIDDEN",
@@ -386,20 +338,18 @@ export const clientPortalRouter = router({
             }))
           );
 
-          // Debita 1 crédito atomicamente dentro da transação (evita race condition)
-          if (!plan?.isUnlimited) {
-            await tx.update(subscriptions)
-              .set({ creditsRemaining: sql`${subscriptions.creditsRemaining} - 1`, updatedAt: new Date() })
-              .where(and(
-                eq(subscriptions.id, sub.id),
-                gt(subscriptions.creditsRemaining, 0)
-              ));
-          }
-
           return [appt];
         });
 
-        return { appointment, creditsRemaining: plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1 };
+        // Debita 1 crédito apenas se plano não for ilimitado
+        const newCredits = plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1;
+        if (!plan?.isUnlimited) {
+          await db.update(subscriptions)
+            .set({ creditsRemaining: newCredits, updatedAt: new Date() })
+            .where(eq(subscriptions.id, sub.id));
+        }
+
+        return { appointment, creditsRemaining: newCredits };
       }
 
       // ── Agendamento em nome de outra pessoa (pai → filho) ─────────────────
@@ -745,7 +695,7 @@ export const clientPortalRouter = router({
       // Cancela no MP se tiver ID de assinatura recorrente
       if (sub.mpSubscriptionId) {
         const accessToken = MP_ACCESS_TOKEN;
-        const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
+        await fetch(`https://api.mercadopago.com/preapproval/${sub.mpSubscriptionId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -753,14 +703,6 @@ export const clientPortalRouter = router({
           },
           body: JSON.stringify({ status: "cancelled" }),
         });
-        if (!mpRes.ok) {
-          const errText = await mpRes.text();
-          console.error("[ClientRouter] Erro ao cancelar assinatura no MP:", errText);
-          if (mpRes.status >= 500) {
-            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao cancelar no Mercado Pago" });
-          }
-          // For 4xx (already cancelled), continue with local cancellation
-        }
       }
 
       await db.update(subscriptions).set({

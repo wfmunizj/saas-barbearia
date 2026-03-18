@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { autoCompletePastAppointments } from "./autoComplete";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, ownerProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import {
@@ -64,18 +64,7 @@ export const appRouter = router({
       if (user.role === "barber") {
         barberId = await getLinkedBarberId(user.id);
       }
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        barbershopId: user.barbershopId,
-        isActive: user.isActive,
-        emailVerified: user.emailVerified,
-        lastSignedIn: user.lastSignedIn,
-        barbershop,
-        barberId,
-      };
+      return { ...user, barbershop, barberId };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -92,7 +81,7 @@ export const appRouter = router({
       return db.getBarbershopById(barbershopId);
     }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           name: z.string().optional(),
@@ -303,7 +292,7 @@ export const appRouter = router({
         return db.getClientById(input.id, barbershopId);
       }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -317,7 +306,7 @@ export const appRouter = router({
         return db.createClient({ ...input, barbershopId });
       }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number(),
@@ -334,7 +323,7 @@ export const appRouter = router({
         return db.updateClient(id, barbershopId, data);
       }),
 
-    delete: ownerProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
@@ -357,7 +346,7 @@ export const appRouter = router({
       return db.getBarbers(barbershopId);
     }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -416,7 +405,7 @@ export const appRouter = router({
         return db.createBarber({ ...input, barbershopId });
       }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number(),
@@ -441,7 +430,7 @@ export const appRouter = router({
         return db.updateBarber(id, barbershopId, data);
       }),
 
-    delete: ownerProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
@@ -543,7 +532,7 @@ export const appRouter = router({
       return db.getServices(barbershopId);
     }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -559,7 +548,7 @@ export const appRouter = router({
         return db.createService({ ...input, barbershopId });
       }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number(),
@@ -578,7 +567,7 @@ export const appRouter = router({
         return db.updateService(id, barbershopId, data);
       }),
 
-    delete: ownerProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
@@ -838,7 +827,7 @@ export const appRouter = router({
       }),
 
     // Conclui manualmente todos os agendamentos passados da barbearia (admin only)
-    triggerAutoComplete: ownerProcedure
+    triggerAutoComplete: protectedProcedure
       .mutation(async ({ ctx }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
         const result = await autoCompletePastAppointments(barbershopId);
@@ -877,7 +866,7 @@ export const appRouter = router({
         return query;
       }),
 
-    markAsPaid: ownerProcedure
+    markAsPaid: protectedProcedure
       .input(z.object({ ids: z.array(z.number()) }))
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);
@@ -942,7 +931,7 @@ export const appRouter = router({
       }),
 
     // Registrar pagamento de comissão (lote)
-    recordPayment: ownerProcedure
+    recordPayment: protectedProcedure
       .input(z.object({
         barberId: z.number(),
         amountInCents: z.number().min(1),
@@ -1075,7 +1064,7 @@ export const appRouter = router({
       return db.getCampaigns(barbershopId);
     }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -1088,7 +1077,7 @@ export const appRouter = router({
         return db.createCampaign({ ...input, barbershopId });
       }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number(),
@@ -1112,7 +1101,7 @@ export const appRouter = router({
       return db.getWhatsappMessages(barbershopId);
     }),
 
-    send: ownerProcedure
+    send: protectedProcedure
       .input(
         z.object({
           clientId: z.number(),
@@ -1130,7 +1119,7 @@ export const appRouter = router({
         );
       }),
 
-    sendBulk: ownerProcedure
+    sendBulk: protectedProcedure
       .input(
         z.object({
           clientIds: z.array(z.number()),
@@ -1168,7 +1157,7 @@ export const appRouter = router({
       return db.getMessageTemplates(barbershopId);
     }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -1197,7 +1186,7 @@ export const appRouter = router({
         return db.getSetting(barbershopId, input.key);
       }),
 
-    upsert: ownerProcedure
+    upsert: protectedProcedure
       .input(
         z.object({
           key: z.string(),
@@ -1224,7 +1213,7 @@ export const appRouter = router({
         .where(eq(plans.barbershopId, barbershopId));
     }),
 
-    create: ownerProcedure
+    create: protectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -1300,7 +1289,7 @@ export const appRouter = router({
         return plan;
       }),
 
-    update: ownerProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number(),
@@ -1357,7 +1346,7 @@ export const appRouter = router({
           .where(and(eq(planServices.planId, input.planId), eq(plans.barbershopId, barbershopId)));
       }),
 
-    delete: ownerProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const barbershopId = await getBarbershopId((ctx.user as any).id);

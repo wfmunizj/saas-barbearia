@@ -1232,9 +1232,17 @@ export const appRouter = router({
         const dbInstance = await import("./db").then(m => m.getDb());
         if (!dbInstance) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
+        // Busca token MP da barbearia (OAuth conectado), senão usa token da plataforma
+        const [barbershopRecord] = await dbInstance
+          .select({ mpAccessToken: barbershops.mpAccessToken })
+          .from(barbershops)
+          .where(eq(barbershops.id, barbershopId))
+          .limit(1);
+        const mpToken = barbershopRecord?.mpAccessToken ?? MP_ACCESS_TOKEN;
+
         // Cria Preapproval Plan no Mercado Pago automaticamente (para assinaturas recorrentes)
         let mpPreapprovalPlanId: string | null = null;
-        if (MP_ACCESS_TOKEN && input.planType !== "single_cut") {
+        if (mpToken && input.planType !== "single_cut") {
           try {
             const mpPlanBody = {
               reason: input.name,
@@ -1251,7 +1259,7 @@ export const appRouter = router({
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+                Authorization: `Bearer ${mpToken}`,
               },
               body: JSON.stringify(mpPlanBody),
             });

@@ -11,7 +11,7 @@ import { getDb } from "./db";
 import {
   barbershops, plans, clientUsers, subscriptions,
   appointments, clients, barbers, services,
-  barberCommissionRecords, appointmentServices,
+  barberCommissionRecords, appointmentServices, payments,
 } from "../drizzle/schema";
 import { eq, and, gte, lte, inArray, sql, gt } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
@@ -478,7 +478,7 @@ export const clientPortalRouter = router({
         return { appointment, creditsRemaining: 0, checkoutUrl: preference.init_point };
       }
 
-      // Pagamento na barbearia → confirma automaticamente (atômico: appointment + appointmentServices)
+      // Pagamento na barbearia → confirma automaticamente (atômico: appointment + appointmentServices + payment)
       const [appointment] = await db.transaction(async (tx) => {
         const [appt] = await tx.insert(appointments).values({
           barbershopId: barbershop.id,
@@ -501,6 +501,18 @@ export const clientPortalRouter = router({
             fichaValueInCents: s.fichaValueInCents ?? 0,
           }))
         );
+
+        // Registra o pagamento avulso in_person na tabela payments
+        if (totalPrice > 0) {
+          await tx.insert(payments).values({
+            barbershopId: barbershop.id,
+            appointmentId: appt.id,
+            clientId: clientUser.clientId!,
+            amountInCents: totalPrice,
+            status: "completed",
+            paymentMethod: "in_person",
+          });
+        }
 
         return [appt];
       });

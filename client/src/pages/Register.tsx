@@ -54,7 +54,7 @@ export default function Register() {
         return;
       }
 
-      toast.success(`Barbearia "${data.barbershop.name}" criada com sucesso! Verifique seu email.`);
+      toast.success(`Barbearia "${data.barbershop.name}" criada com sucesso!`);
       if (data.requiresVerification) {
         navigate("/verificar-email");
       } else {

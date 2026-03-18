@@ -227,7 +227,7 @@ export default function Barbers() {
                   return (
                     <div key={barber.id} className="p-4 border rounded-lg hover:bg-accent/50 transition-colors">
                       <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-lg">{barber.name}</h3>
+                        <h3 className="font-semibold text-base">{barber.name}</h3>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8"
                             title="Ver resumo" onClick={() => navigate(`/barbeiros/${barber.id}/resumo`)}>

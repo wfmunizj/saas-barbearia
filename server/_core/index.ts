@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { barberUserRouter } from "../barberUserRoutes";
 import { mpSaasRouter } from "../mpSaasRoutes";
 import { mpConnectRouter } from "../mpConnectRoutes";
+import { pdfExportRouter } from "../pdfExport";
 import { scheduleAutoComplete } from "../autoComplete";
 
 
@@ -65,6 +66,7 @@ async function startServer() {
   app.use("/api/barber-users", barberUserRouter);
   app.use("/api/saas", mpSaasRouter);
   app.use("/api/mp", mpConnectRouter);
+  app.use("/api/reports", pdfExportRouter);
   // Development helper: cria sessão mock automaticamente para o primeiro owner
   // if (process.env.NODE_ENV === "development") {
   //   app.use(async (req, res, next) => {

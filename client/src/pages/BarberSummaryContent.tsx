@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { ArrowLeft, Scissors, DollarSign, Clock, Percent, Wallet, History, Ticket } from "lucide-react";
+import { ArrowLeft, Scissors, DollarSign, Clock, Percent, Wallet, History, Ticket, FileDown } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -39,6 +39,34 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"cash" | "pix" | "transfer" | "other">("cash");
   const [payNotes, setPayNotes] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+
+  function handleExportPDF() {
+    setIsExporting(true);
+    const params = new URLSearchParams({
+      barberId: String(barberId),
+      startDate,
+      endDate,
+    });
+    const url = `/api/reports/barber-pdf?${params}`;
+
+    fetch(url, { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+          throw new Error(err.error || "Erro ao gerar PDF");
+        }
+        const blob = await res.blob();
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `relatorio-${startDate}-a-${endDate}.pdf`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        toast.success("PDF exportado com sucesso!");
+      })
+      .catch((err) => toast.error(err.message))
+      .finally(() => setIsExporting(false));
+  }
 
   const { data, isLoading } = trpc.barbers.summary.useQuery({ barberId, startDate, endDate });
   const { data: balance } = trpc.commissions.getBalance.useQuery({ barberId });
@@ -154,6 +182,10 @@ export default function BarberSummaryContent({ barberId, backPath, showPayContro
                 setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
                 setEndDate(now.toISOString().split("T")[0]);
               }}>Este mês</Button>
+              <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={isExporting || isLoading}>
+                <FileDown className="h-4 w-4 mr-1" />
+                {isExporting ? "Gerando..." : "Exportar PDF"}
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -15,6 +15,7 @@ import { clientAuthRouter } from "../clientAuth";
 import { barberUserRouter } from "../barberUserRoutes";
 import { mpSaasRouter } from "../mpSaasRoutes";
 import { mpConnectRouter } from "../mpConnectRoutes";
+import { pdfExportRouter } from "../pdfExport";
 // scheduleAutoComplete NÃO é chamado aqui — Vercel é stateless
 // Para produção no Railway, usar index.ts que chama scheduleAutoComplete()
 
@@ -37,6 +38,7 @@ app.use("/api/client", clientAuthRouter);
 app.use("/api/barber-users", barberUserRouter);
 app.use("/api/saas", mpSaasRouter);
 app.use("/api/mp", mpConnectRouter);
+app.use("/api/reports", pdfExportRouter);
 
 app.use(
   "/api/trpc",

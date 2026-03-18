@@ -8,7 +8,7 @@ import { Request, Response } from "express";
 import { createHash, randomBytes } from "crypto";
 import { getDb } from "./db";
 import { users, barbershops } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { COOKIE_NAME } from "@shared/const";
@@ -136,9 +136,7 @@ export async function registerBarbershop(req: Request, res: Response) {
 
     // ─── Inicia trial automático de 7 dias ───────────────────────────────────────
     try {
-      const trialResult = await db.execute(
-        "SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1" as any
-      );
+      const trialResult = await db.execute(sql`SELECT id FROM saas_plans WHERE name = 'Profissional' AND is_active = true LIMIT 1`);
       // postgres-js retorna array direto, sem .rows
       const trialPlan =
         (Array.isArray(trialResult)
@@ -148,15 +146,10 @@ export async function registerBarbershop(req: Request, res: Response) {
       if (trialPlan) {
         const trialEndsAt = new Date();
         trialEndsAt.setDate(trialEndsAt.getDate() + 7);
-        await db.execute(
-          ("INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at) VALUES (" +
-            barbershop.id +
-            ", " +
-            trialPlan.id +
-            ", 'trialing', '" +
-            trialEndsAt.toISOString() +
-            "')") as any
-        );
+        await db.execute(sql`
+          INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, trial_ends_at)
+          VALUES (${barbershop.id}, ${trialPlan.id}, 'trialing', ${trialEndsAt.toISOString()})
+        `);
         console.log(
           "[Auth] Trial de 7 dias iniciado para barbearia:",
           barbershop.id

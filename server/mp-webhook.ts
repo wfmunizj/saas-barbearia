@@ -13,7 +13,7 @@
 import { Request, Response } from "express";
 import { getDb } from "./db";
 import { payments, subscriptions, clientUsers, plans, appointments } from "../drizzle/schema";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
 
@@ -141,9 +141,7 @@ async function handlePaymentEvent(paymentId: string) {
     }
 
     // Idempotência: se já está ativo, ignorar
-    const existingRows = await db.execute(
-      `SELECT id, status FROM saas_subscriptions WHERE barbershop_id = ${saasBarbershopId} LIMIT 1` as any
-    );
+    const existingRows = await db.execute(sql`SELECT id, status FROM saas_subscriptions WHERE barbershop_id = ${saasBarbershopId} LIMIT 1`);
     const rows = Array.isArray(existingRows) ? existingRows : ((existingRows as any).rows ?? []);
     const existingSaasSub = rows[0];
 
@@ -156,16 +154,16 @@ async function handlePaymentEvent(paymentId: string) {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
     if (existingSaasSub) {
-      await db.execute(
-        `UPDATE saas_subscriptions SET status='active', saas_plan_id=${saasPlanId},
-         current_period_end='${periodEnd.toISOString()}', cancelled_at=NULL, updated_at=NOW()
-         WHERE barbershop_id=${saasBarbershopId}` as any
-      );
+      await db.execute(sql`
+        UPDATE saas_subscriptions SET status='active', saas_plan_id=${saasPlanId},
+        current_period_end=${periodEnd.toISOString()}, cancelled_at=NULL, updated_at=NOW()
+        WHERE barbershop_id=${saasBarbershopId}
+      `);
     } else {
-      await db.execute(
-        `INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, current_period_end)
-         VALUES (${saasBarbershopId}, ${saasPlanId}, 'active', '${periodEnd.toISOString()}')` as any
-      );
+      await db.execute(sql`
+        INSERT INTO saas_subscriptions (barbershop_id, saas_plan_id, status, current_period_end)
+        VALUES (${saasBarbershopId}, ${saasPlanId}, 'active', ${periodEnd.toISOString()})
+      `);
     }
 
     console.log(`[MPWebhook] Assinatura SaaS ativada — barbershop:${saasBarbershopId} plano:${saasPlanId}`);

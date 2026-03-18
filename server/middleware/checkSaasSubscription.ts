@@ -12,7 +12,7 @@ import { Request, Response, NextFunction } from "express";
 import { getDb } from "../db";
 import { sdk } from "../_core/sdk";
 import { users } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { COOKIE_NAME } from "@shared/const";
 
 async function getBarbershopIdFromRequest(req: Request): Promise<number | null> {
@@ -56,17 +56,17 @@ export async function checkSaasSubscription(
     return next();
   }
 
-  const result = await db.execute(
-    ("SELECT ss.id, ss.status, ss.trial_ends_at FROM saas_subscriptions ss " +
-     "WHERE ss.barbershop_id IN (" +
-     "  SELECT id FROM barbershops WHERE owner_id = (" +
-     "    SELECT owner_id FROM barbershops WHERE id = " + barbershopId +
-     "  )" +
-     ") " +
-     "AND ss.status IN ('active','trialing','past_due','cancelled','expired') " +
-     "ORDER BY CASE WHEN ss.status = 'active' THEN 0 WHEN ss.status = 'trialing' THEN 1 ELSE 2 END ASC " +
-     "LIMIT 1") as any
-  );
+  const result = await db.execute(sql`
+    SELECT ss.id, ss.status, ss.trial_ends_at FROM saas_subscriptions ss
+    WHERE ss.barbershop_id IN (
+      SELECT id FROM barbershops WHERE owner_id = (
+        SELECT owner_id FROM barbershops WHERE id = ${barbershopId}
+      )
+    )
+    AND ss.status IN ('active','trialing','past_due','cancelled','expired')
+    ORDER BY CASE WHEN ss.status = 'active' THEN 0 WHEN ss.status = 'trialing' THEN 1 ELSE 2 END ASC
+    LIMIT 1
+  `);
   const rows = Array.isArray(result) ? result : (result as any).rows ?? [];
   const sub = rows[0];
 
@@ -81,10 +81,7 @@ export async function checkSaasSubscription(
     const trialEnd = new Date(sub.trial_ends_at);
     if (trialEnd < new Date()) {
       // Atualiza status no banco e bloqueia
-      await db.execute(
-        ("UPDATE saas_subscriptions SET status='expired', updated_at=NOW() " +
-        "WHERE id=" + sub.id) as any
-      );
+      await db.execute(sql`UPDATE saas_subscriptions SET status='expired', updated_at=NOW() WHERE id=${sub.id}`);
       return res.status(402).json({
         error: "trial_expired",
         message: "Seu período de teste encerrou. Assine um plano para continuar.",

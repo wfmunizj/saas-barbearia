@@ -412,6 +412,24 @@ async function handleSubscriptionEvent(subscriptionId: string) {
   const periodEnd = new Date(periodStart);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
 
+  // Idempotência: checa primeiro pelo ID da assinatura no MP para evitar duplicatas em retries
+  const [byMpId] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.mpSubscriptionId, subscriptionId))
+    .limit(1);
+
+  if (byMpId && byMpId.clientUserId === clientUser.id) {
+    // Já existe com esse mpSubscriptionId — apenas atualiza status se mudou
+    if (byMpId.status !== mappedStatus) {
+      await db.update(subscriptions)
+        .set({ status: mappedStatus, updatedAt: new Date() })
+        .where(eq(subscriptions.id, byMpId.id));
+    }
+    console.log(`[MPWebhook] Assinatura já registrada (idempotência) — mpSubId:${subscriptionId} status:${mappedStatus}`);
+    return;
+  }
+
   const [existing] = await db
     .select()
     .from(subscriptions)

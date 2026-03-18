@@ -13,7 +13,7 @@ import {
   appointments, clients, barbers, services,
   barberCommissionRecords, appointmentServices,
 } from "../drizzle/schema";
-import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql, gt } from "drizzle-orm";
 import { verifyClientSession } from "./clientAuth";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
@@ -313,7 +313,8 @@ export const clientPortalRouter = router({
             .where(eq(subscriptions.id, sub.id));
         }
 
-        // Cria o agendamento (atômico: appointment + appointmentServices)
+        // Cria o agendamento e debita crédito atomicamente na mesma transaction
+        let finalCreditsRemaining = sub.creditsRemaining;
         const [appointment] = await db.transaction(async (tx) => {
           const [appt] = await tx.insert(appointments).values({
             barbershopId: barbershop.id,
@@ -338,18 +339,27 @@ export const clientPortalRouter = router({
             }))
           );
 
+          // Debita crédito dentro da transaction para evitar race condition
+          if (!plan?.isUnlimited) {
+            const [updated] = await tx
+              .update(subscriptions)
+              .set({ creditsRemaining: sql`${subscriptions.creditsRemaining} - 1`, updatedAt: new Date() })
+              .where(and(eq(subscriptions.id, sub.id), gt(subscriptions.creditsRemaining, 0)))
+              .returning({ creditsRemaining: subscriptions.creditsRemaining });
+
+            if (!updated) {
+              throw new TRPCError({
+                code: "FORBIDDEN",
+                message: "Sem créditos disponíveis. Tente novamente.",
+              });
+            }
+            finalCreditsRemaining = updated.creditsRemaining;
+          }
+
           return [appt];
         });
 
-        // Debita 1 crédito apenas se plano não for ilimitado
-        const newCredits = plan?.isUnlimited ? sub.creditsRemaining : sub.creditsRemaining - 1;
-        if (!plan?.isUnlimited) {
-          await db.update(subscriptions)
-            .set({ creditsRemaining: newCredits, updatedAt: new Date() })
-            .where(eq(subscriptions.id, sub.id));
-        }
-
-        return { appointment, creditsRemaining: newCredits };
+        return { appointment, creditsRemaining: finalCreditsRemaining };
       }
 
       // ── Agendamento em nome de outra pessoa (pai → filho) ─────────────────

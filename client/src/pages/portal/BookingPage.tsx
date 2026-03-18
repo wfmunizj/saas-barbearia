@@ -115,29 +115,30 @@ export default function BookingPage() {
     executeBooking(method ?? "in_person");
   };
 
-  const executeBooking = (method: "in_person" | "mp" = "in_person") => {
+  const executeBooking = (method: "in_person" | "mp" = "in_person", forceGuestFlag?: boolean) => {
     if (!selectedBarber || selectedServices.length === 0 || !selectedDate || !selectedTime) return;
     setIsBooking(true);
     const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
     const hasSubscription = !!me?.subscription;
+    const effectiveIsGuest = forceGuestFlag !== undefined ? forceGuestFlag : isGuestBooking;
     bookMutation.mutate({
       slug,
       barberId: selectedBarber.id,
       serviceIds: selectedServices.map((s) => s.id),
       appointmentDate,
       notes: notes || undefined,
-      useSubscriptionCredit: hasSubscription && !isGuestBooking,
-      isGuestBooking,
-      guestName: isGuestBooking ? guestName : undefined,
-      paymentMethod: hasSubscription || isGuestBooking ? "in_person" : method,
+      useSubscriptionCredit: hasSubscription && !effectiveIsGuest,
+      isGuestBooking: effectiveIsGuest,
+      guestName: effectiveIsGuest ? guestName : undefined,
+      paymentMethod: hasSubscription || effectiveIsGuest ? "in_person" : method,
     });
   };
 
   const handleGuestDialogConfirm = (forGuest: boolean) => {
-    setIsGuestBooking(forGuest);
     if (forGuest && !guestName.trim()) return;
     setShowGuestDialog(false);
-    executeBooking("in_person");
+    setIsGuestBooking(forGuest);
+    executeBooking("in_person", forGuest);
   };
 
   const creditsRemaining = me?.subscription?.subscription?.creditsRemaining ?? 0;
